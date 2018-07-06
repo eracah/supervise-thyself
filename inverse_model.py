@@ -4,6 +4,9 @@
 # In[1]:
 
 
+import gym
+from gym_minigrid.register import env_list
+from gym_minigrid.minigrid import Grid
 import torch
 
 from torch import nn
@@ -17,7 +20,7 @@ import copy
 from tensorboardX import SummaryWriter
 from data import make_batch
 from torchvision.utils import make_grid
-from data import get_data_loaders
+from load_data import get_data_loaders, get_tensor_data_loaders
 import numpy as np
 import time
 
@@ -33,55 +36,75 @@ def mkstr(key):
 # In[3]:
 
 
+def initialize_weights(self):
+    # Official init from torch repo.
+    for m in self.modules():
+        print(m)
+        if isinstance(m, nn.Conv2d):
+            nn.init.kaiming_normal_(m.weight.data)
+        elif isinstance(m, nn.BatchNorm2d):
+            m.weight.data.fill_(1)
+            m.bias.data.zero_()
+        elif isinstance(m, nn.Linear):
+            m.bias.data.zero_()
+
+
+# In[4]:
+
+
 class Encoder(nn.Module):
     def __init__(self,in_ch=3,h_ch=32, batch_norm=False):
         super(Encoder,self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels=in_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1),
+        bias= False if batch_norm else True
+            
+        layers = [nn.Conv2d(in_channels=in_ch, out_channels=h_ch,
+                      kernel_size=3, stride=2, padding=1,bias=bias),
             nn.BatchNorm2d(h_ch),
             nn.ELU(),
             
             nn.Conv2d(in_channels=h_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1),
+                      kernel_size=3, stride=2, padding=1,bias=bias),
             nn.BatchNorm2d(h_ch),
             nn.ELU(),
             nn.Conv2d(in_channels=h_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1),
+                      kernel_size=3, stride=2, padding=1,bias=bias),
             nn.BatchNorm2d(h_ch),
             nn.ELU(),
             nn.Conv2d(in_channels=h_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1),
+                      kernel_size=3, stride=2, padding=1,bias=bias),
             nn.BatchNorm2d(h_ch),
             nn.ELU()
-        )
-        self.fc = nn.Linear(in_features=h_ch,out_features=h_ch)
+                 ]
         if not batch_norm:
-            del self.encoder[1]
+            for layer in layers:
+                if "BatchNorm" in str(layer):
+                    layers.remove(layer)
+        self.encoder = nn.Sequential(*layers)
+                    
+        self.fc = nn.Linear(in_features=h_ch, out_features=h_ch)
+
     def get_output_shape(self,inp_shape):
         a = torch.randn(inp_shape)
         return self.forward(a).size(1)
+    
+
     def forward(self,x):
         fmaps = self.encoder(x)
         vec = fmaps.view(fmaps.size(0),-1)
         return vec
 
 
-# In[4]:
-
-
-enc = Encoder(batch_norm=True)
-
-x = torch.randn(8,3,64,64)
-
-vec = enc(x)
-
-
 # In[5]:
 
 
-print(vec.size())
-print(enc.get_output_shape((8,3,64,64)))
+# enc = Encoder(batch_norm=True)
+
+# x = torch.randn(8,3,64,64)
+
+# vec = enc(x)
+
+# print(vec.size())
+# print(enc.get_output_shape((8,3,64,64)))
 
 
 # In[6]:
@@ -102,17 +125,17 @@ class ActionPredictor(nn.Module):
 # In[7]:
 
 
-enc = Encoder(batch_norm=True)
+# enc = Encoder(batch_norm=True)
 
-x1 = torch.randn(8,3,64,64)
-x2 = torch.randn(8,3,64,64)
-vec1 = enc(x1)
-vec2 = enc(x2)
-vec = torch.cat((vec1,vec2),dim=-1)
-ap = ActionPredictor(3,1024)
+# x1 = torch.randn(8,3,64,64)
+# x2 = torch.randn(8,3,64,64)
+# vec1 = enc(x1)
+# vec2 = enc(x2)
+# vec = torch.cat((vec1,vec2),dim=-1)
+# ap = ActionPredictor(3,1024)
 
-logits = ap(vec)
-print(logits.size())
+# logits = ap(vec)
+# print(logits.size())
 
 
 # In[8]:
@@ -154,18 +177,18 @@ class InverseModel(nn.Module):
 # In[11]:
 
 
+def write_ims(index,rows,ims,name, iter_):
+    num_ims = rows**2
+    ims_grid = make_grid((ims.data[index] + 1) / 2, rows)
+    writer.add_image(name, ims_grid, iter_)
+    
+
+
+# In[12]:
+
+
 def do_one_iter(x,y, iter_=0, mode="train"):
     x0,x1 = torch.split(x,dim=2,split_size_or_sections=x.size(3))
-
-
-   
-    if iter_ % 50 == 0:
-        rows = 6 
-        num_ims = rows**2
-        x0_grid = make_grid((x0.data[:num_ims] + 1) / 2, rows)
-        writer.add_image(mode + "/x0", x0_grid, iter_)
-        x1_grid = make_grid((x1.data[:num_ims] +1)/2,rows)
-        writer.add_image(mode + "/x1", x1_grid, iter_)
 
     if model.training:
         opt.zero_grad()
@@ -178,12 +201,23 @@ def do_one_iter(x,y, iter_=0, mode="train"):
 
     action_guess = torch.argmax(output,dim=1)
     acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
-    return float(loss.data), acc
+    wrong_actions = y[torch.ne(action_guess,y)].long()
+    num_wrong = wrong_actions.size(0)
+    right_actions = y[torch.eq(action_guess,y)].long()
+    num_right = right_actions.size(0)
+    
+#     if iter_ % 50 == 0:
+#         write_ims(ims=x0,index=wrong_actions,rows=int(np.ceil(np.sqrt(num_wrong))),name=mode +"/x0_wrong", iter_=iter_)
+#         write_ims(ims=x1,index=wrong_actions,rows=int(np.ceil(np.sqrt(num_wrong))),name=mode +"/x1_wrong", iter_=iter_)
+#         write_ims(ims=x0,index=right_actions,rows=int(np.ceil(np.sqrt(num_right))),name=mode +"/x0_right", iter_=iter_)
+#         write_ims(ims=x1,index=right_actions,rows=int(np.ceil(np.sqrt(num_right))),name=mode +"/x1_right", iter_=iter_)
+
+    return float(loss.data), acc #, inc_actions.data
     
     
 
 
-# In[12]:
+# In[13]:
 
 
 def do_epoch(dataloader,epoch,mode="train",numiter=-1):
@@ -191,21 +225,27 @@ def do_epoch(dataloader,epoch,mode="train",numiter=-1):
     mode = "train" if model.training else "val"
     losses = []
     accs = []
+    #inc_actions = torch.randn(size=(0,)).to(DEVICE).long()
     for i,(x,y) in enumerate(dataloader):
         x,y = x.to(DEVICE), y.to(DEVICE)
         loss,acc = do_one_iter(x,y,i,mode=mode)
         losses.append(loss)
         accs.append(acc)
+        #inc_actions = torch.cat((inc_actions,inc_action))
         if numiter != -1 and i > numiter:
             break
     loss, acc = np.mean(losses), np.mean(accs)
     writer.add_scalar(mode+"/loss",loss,global_step=epoch)
     writer.add_scalar(mode+"/acc",acc,global_step=epoch)
-    
+#     try:
+#         writer.add_histogram(mode+"/incorrect_actions",inc_actions,global_step=epoch,bins=range(num_actions))
+#     except:
+#         print(inc_accs)
+#         assert False
     return loss,acc, time.time() - t0
 
 
-# In[ ]:
+# In[15]:
 
 
 if __name__ == "__main__":
@@ -217,30 +257,40 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
-    parser.add_argument("--batch_size",type=int,default=128)
-    #parser.add_argument("--resize_to",type=int, nargs=2, default=[-1, -1])
+    parser.add_argument("--batch_size",type=int,default=16)
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
     parser.add_argument("--epochs",type=int,default=100000)
+    parser.add_argument("--dataset_size",type=int,default=128)
+    parser.add_argument("--width",type=int,default=1024)
     parser.add_argument("--data_dir",type=str,default="../data")
+    parser.add_argument("--grayscale",action="store_true")
+    parser.add_argument("--batch_norm",action="store_true")
     args = parser.parse_args()
-    #args.resize_to = tuple(args.resize_to)
+    args.resize_to = tuple(args.resize_to)
+    
     sys.argv = tmp_argv
 
+    num_actions = 3 # just LEFT, RIGHT, FORWARD (which are 0,1,2)
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
-
-    output_dirname = "_".join([mkstr("env_name"),mkstr("lr")])
-    if test_notebook:
-        output_dirname = "notebook_" + output_dirname
+    #args.grayscale = (True if test_notebook else args.grayscale)
+    output_dirname = ("notebook_" if test_notebook else "") + "_".join([mkstr("env_name"),
+                                                                        mkstr("lr"),
+                                                                        mkstr("width"),
+                                                                        mkstr("batch_norm"),
+                                                                        mkstr("grayscale")])
     log_dir = './.logs/%s'%output_dirname
-
     writer = SummaryWriter(log_dir=log_dir)
-
-    trl, vall, tel = get_data_loaders(batch_size=args.batch_size)
-    num_actions = 3
-    model = InverseModel(in_ch=3,im_wh=(64,64),h_ch=128,num_actions=num_actions,batch_norm=True).to(DEVICE)
+    trl, vall, tel = get_tensor_data_loaders(env_name=args.env_name, resize_to = args.resize_to,
+                            batch_size = args.batch_size, total_examples=args.dataset_size)
+    #trl, vall, tel = get_data_loaders(batch_size=args.batch_size, grayscale=args.grayscale)
+   
+    
+    in_ch = 1 if args.grayscale else 3
+    model = InverseModel(in_ch=in_ch,im_wh=args.resize_to,h_ch=args.width,
+                         num_actions=num_actions,batch_norm=args.batch_norm).to(DEVICE)
+    _ = model.apply(initialize_weights)
     opt = Adam(lr=args.lr, params=model.parameters())
     criterion = nn.CrossEntropyLoss()
 
@@ -254,6 +304,6 @@ if __name__ == "__main__":
         model.eval()
         vloss,vacc,t = do_epoch(vall,epoch,mode="val")
         print("\n\tVal Time: %8.4f seconds"% (t))
-        print("\tVal Loss: %8.4f \n\tVal Acc: %9.3f %%"%(loss,acc))
+        print("\tVal Loss: %8.4f \n\tVal Acc: %9.3f %%"%(vloss,vacc))
     
 
