@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 import gym
@@ -23,9 +23,11 @@ from torchvision.utils import make_grid
 from load_data import get_data_loaders, get_tensor_data_loaders
 import numpy as np
 import time
+import json
+from pathlib import Path
 
 
-# In[2]:
+# In[3]:
 
 
 def mkstr(key):
@@ -33,7 +35,7 @@ def mkstr(key):
     return "=".join([key,str(d[key])])
 
 
-# In[3]:
+# In[4]:
 
 
 def initialize_weights(self):
@@ -49,7 +51,7 @@ def initialize_weights(self):
             m.bias.data.zero_()
 
 
-# In[4]:
+# In[5]:
 
 
 class Encoder(nn.Module):
@@ -94,7 +96,7 @@ class Encoder(nn.Module):
         return vec
 
 
-# In[5]:
+# In[6]:
 
 
 # enc = Encoder(batch_norm=True)
@@ -107,7 +109,7 @@ class Encoder(nn.Module):
 # print(enc.get_output_shape((8,3,64,64)))
 
 
-# In[6]:
+# In[7]:
 
 
 class ActionPredictor(nn.Module):
@@ -115,6 +117,7 @@ class ActionPredictor(nn.Module):
         super(ActionPredictor,self).__init__()
         self.predictor = nn.Sequential(
             nn.Linear(in_features=in_ch,out_features=h_ch),
+            nn.ReLU(),
             nn.Linear(in_features=h_ch,out_features=num_actions)
         )
     def forward(self,x):
@@ -122,7 +125,7 @@ class ActionPredictor(nn.Module):
         
 
 
-# In[7]:
+# In[8]:
 
 
 # enc = Encoder(batch_norm=True)
@@ -138,7 +141,7 @@ class ActionPredictor(nn.Module):
 # print(logits.size())
 
 
-# In[8]:
+# In[9]:
 
 
 class InverseModel(nn.Module):
@@ -155,7 +158,7 @@ class InverseModel(nn.Module):
         return self.ap(fboth)
 
 
-# In[9]:
+# In[10]:
 
 
 # prd = InverseModel(in_ch=3,im_wh=(64,64),h_ch=32,num_actions=4,batch_norm=False)
@@ -166,7 +169,7 @@ class InverseModel(nn.Module):
 # prd(x1,x2)
 
 
-# In[10]:
+# In[11]:
 
 
 # prd.parameters()
@@ -174,7 +177,7 @@ class InverseModel(nn.Module):
 # nn.CrossEntropyLoss?
 
 
-# In[11]:
+# In[12]:
 
 
 def write_ims(index,rows,ims,name, iter_):
@@ -184,7 +187,7 @@ def write_ims(index,rows,ims,name, iter_):
     
 
 
-# In[12]:
+# In[13]:
 
 
 def do_one_iter(x,y, iter_=0, mode="train"):
@@ -206,18 +209,21 @@ def do_one_iter(x,y, iter_=0, mode="train"):
     right_actions = y[torch.eq(action_guess,y)].long()
     num_right = right_actions.size(0)
     
-#     if iter_ % 50 == 0:
-#         write_ims(ims=x0,index=wrong_actions,rows=int(np.ceil(np.sqrt(num_wrong))),name=mode +"/x0_wrong", iter_=iter_)
-#         write_ims(ims=x1,index=wrong_actions,rows=int(np.ceil(np.sqrt(num_wrong))),name=mode +"/x1_wrong", iter_=iter_)
-#         write_ims(ims=x0,index=right_actions,rows=int(np.ceil(np.sqrt(num_right))),name=mode +"/x0_right", iter_=iter_)
-#         write_ims(ims=x1,index=right_actions,rows=int(np.ceil(np.sqrt(num_right))),name=mode +"/x1_right", iter_=iter_)
+    if iter_ % 50 == 0:
+        try:
+            write_ims(ims=x0,index=wrong_actions,rows=int(np.ceil(np.sqrt(num_wrong))),name=mode +"/x0_wrong", iter_=iter_)
+            write_ims(ims=x1,index=wrong_actions,rows=int(np.ceil(np.sqrt(num_wrong))),name=mode +"/x1_wrong", iter_=iter_)
+            write_ims(ims=x0,index=right_actions,rows=int(np.ceil(np.sqrt(num_right))),name=mode +"/x0_right", iter_=iter_)
+            write_ims(ims=x1,index=right_actions,rows=int(np.ceil(np.sqrt(num_right))),name=mode +"/x1_right", iter_=iter_)
+        except:
+            print("Num wrong and right: ",num_wrong,num_right)
 
     return float(loss.data), acc #, inc_actions.data
     
     
 
 
-# In[13]:
+# In[14]:
 
 
 def do_epoch(dataloader,epoch,mode="train",numiter=-1):
@@ -248,6 +254,17 @@ def do_epoch(dataloader,epoch,mode="train",numiter=-1):
 # In[15]:
 
 
+def write_to_config_file(dict_,log_dir):
+    config_file_path = Path(log_dir) / "config.json"
+    dict_string = json.dumps(dict_) + "\n"
+    with open(config_file_path, "w") as f:
+        f.write(dict_string)
+    
+
+
+# In[17]:
+
+
 if __name__ == "__main__":
     tmp_argv = copy.deepcopy(sys.argv)
     test_notebook = False
@@ -257,36 +274,40 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr", type=float, default=0.0001)
+    parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
-    parser.add_argument("--batch_size",type=int,default=16)
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
+    parser.add_argument("--batch_size",type=int,default=64)
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[42, 42])
     parser.add_argument("--epochs",type=int,default=100000)
-    parser.add_argument("--dataset_size",type=int,default=128)
-    parser.add_argument("--width",type=int,default=1024)
+    parser.add_argument("--dataset_size",type=int,default=60000)
+    parser.add_argument("--width",type=int,default=32)
     parser.add_argument("--data_dir",type=str,default="../data")
     parser.add_argument("--grayscale",action="store_true")
     parser.add_argument("--batch_norm",action="store_true")
+    parser.add_argument("--action_strings",type=str, nargs='+', default=["move_up", "move_down", "move_right", "move_left"])
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
-    
+    if args.batch_size > args.dataset_size:
+        args.batch_size = args.dataset_size
     sys.argv = tmp_argv
-
-    num_actions = 3 # just LEFT, RIGHT, FORWARD (which are 0,1,2)
+    
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     #args.grayscale = (True if test_notebook else args.grayscale)
     output_dirname = ("notebook_" if test_notebook else "") + "_".join([mkstr("env_name"),
                                                                         mkstr("lr"),
                                                                         mkstr("width"),
-                                                                        mkstr("batch_norm"),
-                                                                        mkstr("grayscale")])
+                                                                        mkstr("dataset_size"),
+                                                                        mkstr("resize_to")
+                                                                       ])
     log_dir = './.logs/%s'%output_dirname
     writer = SummaryWriter(log_dir=log_dir)
-    trl, vall, tel = get_tensor_data_loaders(env_name=args.env_name, resize_to = args.resize_to,
+    write_to_config_file(args.__dict__, log_dir)
+    if test_notebook:
+        args.dataset_size = 1000
+    trl, vall, tel, label_list = get_tensor_data_loaders(rollout_size=128,action_strings=args.action_strings,env_name=args.env_name, resize_to = args.resize_to,
                             batch_size = args.batch_size, total_examples=args.dataset_size)
-    #trl, vall, tel = get_data_loaders(batch_size=args.batch_size, grayscale=args.grayscale)
-   
-    
+
+    num_actions = len(label_list)
     in_ch = 1 if args.grayscale else 3
     model = InverseModel(in_ch=in_ch,im_wh=args.resize_to,h_ch=args.width,
                          num_actions=num_actions,batch_norm=args.batch_norm).to(DEVICE)
