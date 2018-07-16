@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[32]:
+# In[1]:
 
 
 import gym
@@ -31,23 +31,33 @@ import sys
 from torch.utils.data import TensorDataset
 
 
-# In[33]:
+# In[2]:
 
 
-env= gym.make("MiniGrid-Empty-6x6-v0")
-
-
-# In[34]:
-
-
-def convert_frame(obs, resize_to=(64,64)):
+def convert_frame(obs, resize_to=(64,64),to_tensor=False):
     pil_image = Image.fromarray(obs, 'RGB')
     transforms = [Resize(resize_to)] if resize_to != (-1,-1) else []
-    transforms.extend([ToTensor(),Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])])
+    if to_tensor:
+        transforms.extend([ToTensor(),Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])])
     transforms = Compose(transforms)
     frame = transforms(pil_image)
+    if not to_tensor:
+        frame = np.asarray(frame)
     
     return frame
+
+
+# In[3]:
+
+
+def convert_frames(frames,resize_to=(64,64),to_tensor=False):
+    convert = partial(convert_frame,resize_to=resize_to,to_tensor=to_tensor)
+    return torch.stack([convert(frame) for frame in frames])
+        
+
+
+# In[4]:
+
 
 def env_dot_multistep(env,actions):
     '''generalizes gym function "step" that takes an action to one that takes a list of actions'''
@@ -96,11 +106,11 @@ def check_for_corner(env):
     
 
 
-# In[35]:
+# In[5]:
 
 
 class DataCreator(object):
-    def __init__(self,env_name="MiniGrid-Empty-6x6-v0",
+    def __init__(self,to_tensor=False,env_name="MiniGrid-Empty-6x6-v0",
                        resize_to = (64,64),
                        rollout_size=128,
                        action_strings = ["move_up", "move_down","move_right","move_left"]):
@@ -110,7 +120,8 @@ class DataCreator(object):
         self.rollout_size = rollout_size
         self.action_strings = action_strings
         self.action_space = create_action_space_minigrid(env=tmp_env,
-                                                         list_of_action_strings=self.action_strings)
+                                                        list_of_action_strings=self.action_strings)
+        self.to_tensor = to_tensor
         if "MiniGrid" in env_name:
             corner_actions = ["left_or_up", "right_or_up", "left_or_down", "right_or_down"]
         else:
@@ -118,14 +129,15 @@ class DataCreator(object):
         
         self.label_list = deepcopy(action_strings) + corner_actions
         print(self.label_list)
-        self.convert_fxn = partial(convert_frame, resize_to = self.resize_to)
+        self.convert = partial(convert_frame, resize_to = self.resize_to,to_tensor=self.to_tensor)
 
     
     def collect_one_data_point(self,env,obs):
         x0 = deepcopy(obs)
         action = self.action_space[np.random.choice(len(self.action_space))]
         obs, reward, done, info = env_dot_multistep(env,action)
-        obs = self.convert_fxn(env.render("rgb_array"))
+        obs = env.render("rgb_array")
+        obs = self.convert(obs)
         a = torch.tensor([self.action_space.index(action)])
         reward = torch.tensor([reward])
         x1 = deepcopy(obs)
@@ -134,11 +146,12 @@ class DataCreator(object):
     def rollout_iterator(self):
         env = gym.make(self.env_name)
         state = env.reset()
-        obs = self.convert_fxn(env.render('rgb_array'))
+        obs = env.render('rgb_array')
+        obs = self.convert(obs)
         for i in range(self.rollout_size):
             x0,x1,a,reward = self.collect_one_data_point(env,obs)
             obs = deepcopy(x1)
-            if torch.allclose(torch.eq(x0,x1).float(), torch.ones_like(x0)):
+            if self.to_tensor and torch.allclose(torch.eq(x0,x1).float(), torch.ones_like(x0))            or np.all(x0 == x1):
                 in_corner, label_name = check_for_corner(env)
                 if in_corner:
                     a = torch.tensor([self.label_list.index(label_name)])
@@ -148,7 +161,10 @@ class DataCreator(object):
 
     def do_rollout(self):      
         rollouts = [(x0[None,:],x1[None,:],a,reward) for x0,x1,a,reward in self.rollout_iterator()]
-        x0,x1,y,r = [torch.cat(arr) for arr in zip(*rollouts)]
+        if self.to_tensor:
+            x0,x1,y,r = [torch.cat(arr) for arr in zip(*rollouts)]
+        else:
+            x0,x1,y,r = [np.concatenate(arr) for arr in zip(*rollouts)]
 
         return x0, x1, y, r
 
@@ -162,13 +178,13 @@ class DataCreator(object):
         
 
 
-# In[36]:
+# In[6]:
 
 
 def plot_test(x0,x1,y,r, label_list ):
     from matplotlib import pyplot as plt
     get_ipython().run_line_magic('matplotlib', 'inline')
-    for i,(im0,im1,y) in enumerate(zip(x0.data,x1.data,y)):
+    for i,(im0,im1,y) in enumerate(zip(x0,x1,y)):
         plt.figure(i)
         plt.clf()
         sp1 = plt.subplot(1,2,1)
@@ -179,19 +195,28 @@ def plot_test(x0,x1,y,r, label_list ):
     
 
 
-# In[37]:
+# In[10]:
 
 
 # if __name__ == "__main__":
 #     action_strings = ["move_up", "move_down","move_right","move_left"]
-#     dc = DataCreator(rollout_size=10)
-#     x0,x1,y, r = dc.do_rollout()
-#     plot_test(x0,x1,y, r, dc.label_list)
+#     dc = DataCreator(rollout_size=10,to_tensor=False)
+#     x0s,x1s,ys, rs = dc.do_rollout()
+#     plot_test(np.transpose(x0s,axes=(0,3,1,2)),np.transpose(x1s,axes=(0,3,1,2)),ys, rs, dc.label_list)
+#     dc = DataCreator(rollout_size=10,to_tensor=True)
+#     x0s,x1s,ys, rs = dc.do_rollout()
+#     plot_test(x0s,x1s,ys, rs, dc.label_list)
+    
+    
+#     #x0 = convert_frames(np.asarray(x0s),to_tensor=True,resize_to=(-1,-1))
+#     #x1 = convert_frames(np.asarray(x1s),to_tensor=True,resize_to=(-1,-1))
+#     #from matplotlib import pyplot as plt
+
 
     
 
 
-# In[38]:
+# In[11]:
 
 
 def get_tensor_data_loaders(env_name="MiniGrid-Empty-6x6-v0", resize_to = (64,64),
@@ -207,7 +232,7 @@ def get_tensor_data_loaders(env_name="MiniGrid-Empty-6x6-v0", resize_to = (64,64
     dc = DataCreator(env_name=env_name,
                      resize_to = resize_to,
                      action_strings=action_strings,
-                     rollout_size=rollout_size)
+                     rollout_size=rollout_size, to_tensor=True)
     
     tr_size = int(0.8*total_examples)
     
@@ -218,61 +243,15 @@ def get_tensor_data_loaders(env_name="MiniGrid-Empty-6x6-v0", resize_to = (64,64
     
 
 
-# In[39]:
+# In[1]:
 
 
-# if __name__ == "__main__":
-#     from matplotlib import pyplot as plt
-#     %matplotlib inline
-#     tr,v,te,ll = get_tensor_data_loaders(env_name="MiniGrid-Empty-6x6-v0",resize_to=(-1,-1),total_examples=1000)
+if __name__ == "__main__":
+    from matplotlib import pyplot as plt
+    get_ipython().run_line_magic('matplotlib', 'inline')
+    tr,v,te,ll = get_tensor_data_loaders(env_name="MiniGrid-Empty-6x6-v0",resize_to=(64,64),total_examples=1000)
 
-#     x0,x1,y = next(tr.__iter__())
-
-#     x0.size()
-
-#     for i in range(64):
-#         plt.figure(i)
-#         plt.imshow(x0[i][0].data)
-#         plt.title(ll[int(y[i].data)])
-
-
-# In[40]:
-
-
-def fill_replay_buffer(buffer,size, rollout_size=128,
-                       env_name="MiniGrid-Empty-6x6-v0",
-                       resize_to = (64,64),
-                       action_strings = ["move_left","move_right","move_down", "move_up"]):
-    #fills replay buffer with size examples
-    num_rollouts = int(np.ceil(size / rollout_size))
-    dc = DataCreator(env_name=env_name,
-                     resize_to = resize_to,
-                     action_strings=action_strings,
-                     rollout_size=rollout_size)
-    for rollout in range(num_rollouts):
-        for i, (x0,x1,a,r) in enumerate(dc.rollout_iterator()):
-            if i > size:
-                break
-            buffer.push(state=x0,action=a,next_state=x1,reward=r)
-    return buffer, dc.label_list
-    
-
-    
-    
-    
-
-
-# In[41]:
-
-
-# if __name__ == "__main__":
-#     from replay_buffer import ReplayMemory
-
-#     rm  = ReplayMemory(batch_size=10,capacity=20)
-
-#     rm, label_list = fill_replay_buffer(rm,21)
-
-#     x0,a,x1,r = rm.sample(batch_size=10)
-
-#     plot_test(x0,x1,a,r, label_list )
+    x0,x1,y,r = next(tr.__iter__())
+    print(x0.size())
+    plot_test(x0,x1,y, r, ll)
 
