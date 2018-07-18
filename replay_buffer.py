@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[3]:
 
 
 import random
@@ -11,7 +11,7 @@ import numpy as np
 from load_data import convert_frames,convert_frame, DataCreator, plot_test
 
 
-# In[6]:
+# In[4]:
 
 
 Transition = namedtuple('Transition',
@@ -48,7 +48,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[3]:
+# In[5]:
 
 
 # if __name__ == "__main__":
@@ -61,32 +61,31 @@ class ReplayMemory(object):
 #         rm.push(state=x0[i],next_state=x1[i],action=a[i], reward=r[i])
 
 
-# In[4]:
+# In[6]:
 
 
 def fill_replay_buffer(buffer,size, rollout_size=128,
                        env_name="MiniGrid-Empty-6x6-v0",
                        resize_to = (64,64),
-                       action_strings = ["move_left","move_right","move_down", "move_up"]):
+                       action_space = range(3)):
     #fills replay buffer with size examples
     num_rollouts = int(np.ceil(size / rollout_size))
     dc = DataCreator(env_name=env_name,
                      resize_to = resize_to,
-                     action_strings=action_strings,
+                     action_space=action_space,
                      rollout_size=rollout_size)
     for rollout in range(num_rollouts):
         for i, (x0,x1,a,r) in enumerate(dc.rollout_iterator()):
             if i > size:
                 break
             buffer.push(state=x0,action=a,next_state=x1,reward=r)
-    return buffer, dc.label_list
     
 
     
  
 
 
-# In[5]:
+# In[10]:
 
 
 if __name__ == "__main__":
@@ -94,9 +93,9 @@ if __name__ == "__main__":
 
     rm  = ReplayMemory(batch_size=10,capacity=20)
 
-    rm, label_list = fill_replay_buffer(rm,21)
+    fill_replay_buffer(rm,21)
 
     x0,x1,a,r = rm.sample(batch_size=10)
 
-    plot_test(x0,x1,a,r, label_list )
+    plot_test(x0,x1,a,r, label_list=["left","right","forward"] )
 

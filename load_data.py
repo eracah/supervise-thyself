@@ -59,86 +59,35 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
 # In[4]:
 
 
-def env_dot_multistep(env,actions):
-    '''generalizes gym function "step" that takes an action to one that takes a list of actions'''
-    if not (isinstance(actions,list) or isinstance(actions,tuple)):
-        actions = [actions]
-            
-    for action in actions:
-        obs, reward, done, info = env.step(action)
-    return obs, reward, done, info
-
-
-            
-def create_action_space_minigrid(env,list_of_action_strings=["left", "right", "forward"]):
-    actions_dict = {k:env.actions[k].real for k in ["forward", "right", "left"]}
-    # these move agent in that direction without rotating them at all
-    #actions_dict["backward"] = [actions_dict[k] for k in ["right","right","forward","right","right"]]
-    actions_dict["move_right"] = [actions_dict[k] for k in ["forward"]]
-    actions_dict["move_left"] = [actions_dict[k] for k in ["right","right","forward","right","right"]]
-    actions_dict["move_down"] = [actions_dict[k] for k in ["right","forward", "left"]]
-    actions_dict["move_up"] = [actions_dict[k] for k in ["left","forward", "right"]]
-    action_space = [actions_dict[k] for k in list_of_action_strings]
-    return action_space
-
-# env = gym.make("MiniGrid-Empty-6x6-v0")
-# action_strings = ["move_" + k for k in ["left","right","up","down"]]
-# a = create_action_space(env,action_strings)
-
-def check_for_corner(env):
-    grid_size = env.grid_size
-    agent_pos = tuple(env.agent_pos)
-    in_corner = False
-    new_label_name = ""
-    if agent_pos in [(1, 1), (grid_size - 2, 1), (1, grid_size - 2), (grid_size - 2, grid_size - 2)]:
-        in_corner = True
-        if agent_pos == (1,1):
-            new_label_name = "left_or_up"
-        elif agent_pos == (grid_size - 2,1):
-            new_label_name = "right_or_up"
-        elif agent_pos == (1, grid_size - 2):
-            new_label_name = "left_or_down"
-        else:
-            new_label_name = "right_or_down"
-    return in_corner, new_label_name
-            
-        
-    
-
-
-# In[5]:
-
-
 class DataCreator(object):
     def __init__(self,to_tensor=False,env_name="MiniGrid-Empty-6x6-v0",
                        resize_to = (64,64),
                        rollout_size=128,
-                       action_strings = ["move_up", "move_down","move_right","move_left"]):
+                       action_space=range(3)):
         self.env_name = env_name
         tmp_env = gym.make(self.env_name)
         self.resize_to = resize_to
         self.rollout_size = rollout_size
-        self.action_strings = action_strings
-        self.action_space = create_action_space_minigrid(env=tmp_env,
-                                                        list_of_action_strings=self.action_strings)
-        self.to_tensor = to_tensor
-        if "MiniGrid" in env_name:
-            corner_actions = ["left_or_up", "right_or_up", "left_or_down", "right_or_down"]
-        else:
-            corner_actions = []
         
-        self.label_list = deepcopy(action_strings) + corner_actions
-        print(self.label_list)
+        self.action_space = action_space
+        self.to_tensor = to_tensor
+#         if "MiniGrid" in env_name:
+#             corner_actions = ["left_or_up", "right_or_up", "left_or_down", "right_or_down"]
+#         else:
+#             corner_actions = []
+        
+#         self.label_list = deepcopy(action_strings) #+ corner_actions
+#         #print(self.label_list)
         self.convert = partial(convert_frame, resize_to = self.resize_to,to_tensor=self.to_tensor)
 
     
     def collect_one_data_point(self,env,obs):
         x0 = deepcopy(obs)
-        action = self.action_space[np.random.choice(len(self.action_space))]
-        obs, reward, done, info = env_dot_multistep(env,action)
+        action = np.random.choice(self.action_space)
+        obs, reward, done, info = env.step(action)
         obs = env.render("rgb_array")
         obs = self.convert(obs)
-        a = torch.tensor([self.action_space.index(action)])
+        a = torch.tensor([int(action)])
         reward = torch.tensor([reward])
         x1 = deepcopy(obs)
         return x0,x1,a,reward
@@ -149,12 +98,13 @@ class DataCreator(object):
         obs = env.render('rgb_array')
         obs = self.convert(obs)
         for i in range(self.rollout_size):
-            x0,x1,a,reward = self.collect_one_data_point(env,obs)
+            x0,x1,a,reward= self.collect_one_data_point(env,obs)
             obs = deepcopy(x1)
-            if self.to_tensor and torch.allclose(torch.eq(x0,x1).float(), torch.ones_like(x0))            or np.all(x0 == x1):
-                in_corner, label_name = check_for_corner(env)
-                if in_corner:
-                    a = torch.tensor([self.label_list.index(label_name)])
+#             if self.to_tensor and torch.allclose(torch.eq(x0,x1).float(), torch.ones_like(x0))\
+#             or np.all(x0 == x1):
+#                 in_corner, label_name = check_for_corner(env)
+#                 if in_corner:
+#                     a = torch.tensor([self.label_list.index(label_name)])
             yield x0,x1,a,reward
 
     
@@ -178,7 +128,7 @@ class DataCreator(object):
         
 
 
-# In[6]:
+# In[5]:
 
 
 def plot_test(x0,x1,y,r, label_list ):
@@ -198,19 +148,26 @@ def plot_test(x0,x1,y,r, label_list ):
 # In[10]:
 
 
-# if __name__ == "__main__":
-#     action_strings = ["move_up", "move_down","move_right","move_left"]
-#     dc = DataCreator(rollout_size=10,to_tensor=False)
-#     x0s,x1s,ys, rs = dc.do_rollout()
-#     plot_test(np.transpose(x0s,axes=(0,3,1,2)),np.transpose(x1s,axes=(0,3,1,2)),ys, rs, dc.label_list)
-#     dc = DataCreator(rollout_size=10,to_tensor=True)
-#     x0s,x1s,ys, rs = dc.do_rollout()
-#     plot_test(x0s,x1s,ys, rs, dc.label_list)
+if __name__ == "__main__":
+    action_strings = ["move_up", "move_down","move_right","move_left"]
+    dc = DataCreator(rollout_size=20,to_tensor=False)
+    x0s,x1s,ys, rs = dc.do_rollout()
+    plot_test(np.transpose(x0s,axes=(0,3,1,2)),np.transpose(x1s,axes=(0,3,1,2)),ys, rs, label_list=["left","right","forward"])
+    
+
+
+# In[11]:
+
+
+if __name__ == "__main__":    
+    dc = DataCreator(rollout_size=20,to_tensor=True)
+    x0s,x1s,ys, rs = dc.do_rollout()
+    plot_test(x0s,x1s,ys, rs, label_list=["left","right","forward"])
     
     
-#     #x0 = convert_frames(np.asarray(x0s),to_tensor=True,resize_to=(-1,-1))
-#     #x1 = convert_frames(np.asarray(x1s),to_tensor=True,resize_to=(-1,-1))
-#     #from matplotlib import pyplot as plt
+    #x0 = convert_frames(np.asarray(x0s),to_tensor=True,resize_to=(-1,-1))
+    #x1 = convert_frames(np.asarray(x1s),to_tensor=True,resize_to=(-1,-1))
+    #from matplotlib import pyplot as plt
 
 
     
