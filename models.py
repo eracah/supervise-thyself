@@ -28,14 +28,18 @@ from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
 
 
-# In[4]:
+# In[9]:
 
 
 class Encoder(nn.Module):
-    def __init__(self,in_ch=3,h_ch=32, batch_norm=False):
+    def __init__(self,im_wh=(64,64),in_ch=3,
+                 h_ch=32,embed_len=32, 
+                 batch_norm=False):
         super(Encoder,self).__init__()
         bias= False if batch_norm else True
-            
+        self.im_wh = im_wh 
+        self.in_ch = in_ch
+        self.embed_len = embed_len
         layers = [nn.Conv2d(in_channels=in_ch, out_channels=h_ch,
                       kernel_size=3, stride=2, padding=1,bias=bias),
             nn.BatchNorm2d(h_ch),
@@ -60,11 +64,14 @@ class Encoder(nn.Module):
                     layers.remove(layer)
         self.encoder = nn.Sequential(*layers)
                     
-        self.fc = nn.Linear(in_features=h_ch, out_features=h_ch)
+        self.fc = nn.Linear(in_features=self.enc_out_shape,
+                            out_features=self.embed_len)
 
-    def get_output_shape(self,inp_shape):
+    @property
+    def enc_out_shape(self):
+        inp_shape = (1,self.in_ch,*self.im_wh)
         a = torch.randn(inp_shape)
-        return self.forward(a).size(1)
+        return np.prod(self.encoder(a).size()[1:])
     
 #     def get_feature_maps(self):
 #         return self.fmaps
@@ -72,11 +79,11 @@ class Encoder(nn.Module):
     def forward(self,x):
         fmaps = self.encoder(x)
         vec = fmaps.view(fmaps.size(0),-1)
-        self.fmaps = fmaps
-        return vec
+        embedding = self.fc(vec)
+        return embedding
 
 
-# In[6]:
+# In[10]:
 
 
 class ActionPredictor(nn.Module):
@@ -92,25 +99,70 @@ class ActionPredictor(nn.Module):
         
 
 
-# In[8]:
+# In[11]:
 
 
 class InverseModel(nn.Module):
-    def __init__(self,in_ch,im_wh, h_ch, num_actions, batch_norm):
+    def __init__(self,encoder, num_actions=3):
         super(InverseModel,self).__init__()
-        self.enc = Encoder(in_ch=in_ch,h_ch=h_ch, batch_norm=batch_norm)
-        
-        embed_len = self.enc.get_output_shape((1, in_ch, *im_wh))
-        self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*embed_len)
+        self.encoder = encoder
+        self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
     def forward(self,x0,x1):
-        f0 = self.enc(x0)
-        f1 = self.enc(x1)
+        f0 = self.encoder(x0)
+        f1 = self.encoder(x1)
         fboth = torch.cat([f0,f1],dim=-1)
         return self.ap(fboth)
 
 
-# In[5]:
+# In[12]:
 
+
+class QNet(nn.Module):
+    def __init__(self,encoder,num_actions=3, h_ch=32):
+        super(QNet,self).__init__()
+        self.encoder = encoder
+        self.q_enc = nn.Sequential(
+            nn.Linear(in_features=self.encoder.embed_len,out_features=h_ch),
+            nn.ELU(),
+            nn.Linear(in_features=h_ch,out_features=h_ch),
+            nn.ELU(),
+            nn.Linear(in_features=h_ch,out_features=num_actions)
+        )
+    def forward(self,x):
+        h = self.encoder(x)
+        return self.q_enc(h)
+        
+        
+
+
+# In[22]:
+
+
+if __name__ == "__main__":
+    x = torch.randn((10,3,64,64))
+    x0 = x[0][None,:]
+    enc = Encoder(embed_len=32)
+    q = QNet(enc)
+    print(q(x0))
+    print(list(dict(q.named_parameters()).keys()))
+    
+
+
+# In[23]:
+
+
+# if __name__ == "__main__":
+#     x = torch.randn((10,3,64,64))
+#     enc = Encoder(embed_len=64)
+#     print(enc(x).size())
+if __name__ == "__main__":
+    x0 = torch.randn((10,3,64,64))
+    x1 = torch.randn((10,3,64,64))
+    enc = Encoder(embed_len=64)
+    im = InverseModel(encoder=enc)
+
+    print(im(x0,x1).size())
+    print(list(dict(im.named_parameters()).keys()))
 
 # enc = Encoder(batch_norm=True)
 

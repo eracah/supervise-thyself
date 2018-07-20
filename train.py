@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
-from inverse_model import InverseModel
+from models import InverseModel, QNet, Encoder
 from utils import mkstr, initialize_weights, write_ims, write_to_config_file
 
 
@@ -51,45 +51,44 @@ def do_one_update(x0,x1,y, iter_= 0, mode="train"):
 
     return float(loss.data), acc #, inc_actions.data
     
-    
-def do_epoch(dataloader,epoch,mode="train",numiter=-1):
-    t0 = time.time()
-    mode = "train" if model.training else "val"
-    losses = []
-    accs = []
-    for i,(x0,x1,y,r) in enumerate(dataloader):
-        x0,x1, y = x0.to(DEVICE), x1.to(DEVICE), y.to(DEVICE)
-        #x0,x1 = torch.split(x,dim=2,split_size_or_sections=x.size(3))
-        loss,acc = do_one_iter(x0,x1,y,i,mode=mode)
-        losses.append(loss)
-        accs.append(acc)
-        
-        #inc_actions = torch.cat((inc_actions,inc_action))
-        if numiter != -1 and i > numiter:
-            break
-    loss, acc = np.mean(losses), np.mean(accs)
-    writer.add_scalar(mode+"/loss",loss,global_step=epoch)
-    writer.add_scalar(mode+"/acc",acc,global_step=epoch)
-
-    return loss,acc, time.time() - t0
+ 
 
 
 # In[3]:
 
 
-def e_greedy(actions,e=0.1):
-    r = random.uniform(0,1)
-    if r < e:
-        inds = np.arange(actions.shape[0])
-        ch = random.randint(0,3)
-    #print(action_strings[ch])
-        return ch
-  
-    else:
-        return np.argmax(actions)
+def eval_q_loss(x0,a,y):
+    q_vals = torch.gather(q_net(x0),1,a[:,None])[:,0]
+    q_loss = q_criterion(q_vals,y)
+    return q_loss
 
 
 # In[4]:
+
+
+def e_greedy(q_values,e=0.1):
+    r = np.random.uniform(0,1)
+    if r < e:
+        action = np.random.choice(len(q_values))
+    else:
+        action = np.argmax(q_values)
+    return action
+
+
+# In[5]:
+
+
+# if __name__ == "__main__":
+#     q_values = np.random.randn(3)
+
+#     e_greedy(q_values)
+
+#     q_values = torch.randn((3,))
+
+#     e_greedy(q_values)
+
+
+# In[6]:
 
 
 def setup_args():
@@ -113,6 +112,7 @@ def setup_args():
     parser.add_argument("--offline",action="store_true")
     parser.add_argument("--buffer_size",type=int,default=10**6)
     parser.add_argument("--init_buffer_size",type=int,default=1000)
+    parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--action_strings",type=str, nargs='+', default=["move_up", "move_down", "move_right", "move_left"])
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
@@ -140,10 +140,11 @@ def setup_dirs_logs(args):
     return writer
 
 
-# In[5]:
+# In[7]:
 
 
 if __name__ == "__main__":
+    gamma = 0.9
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     args = setup_args()
     args.action_strings = ["forward", "left", "right"]
@@ -151,7 +152,6 @@ if __name__ == "__main__":
     env = gym.make(args.env_name)
     if "MiniGrid" in args.env_name:
         action_space = range(3)
-        num_labels = len(action_space)
 #         action_space = create_action_space_minigrid(env=env,
 #                                                     list_of_action_strings=args.action_strings)
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
 # #         num_labels = len(label_list)
     else:
         action_space = list(range(env.action_space.n))
-        num_labels = len(action_space)
+    num_actions = len(action_space)
 
     replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
     fill_replay_buffer(replay_buffer,
@@ -169,14 +169,26 @@ if __name__ == "__main__":
                        env_name=args.env_name,
                        resize_to = args.resize_to,
                        action_space =action_space)
+    
+    encoder = Encoder(in_ch=3,
+                      im_wh=args.resize_to,
+                      h_ch=args.width,
+                      embed_len=args.embed_len,
+                      batch_norm=args.batch_norm).to(DEVICE)
+    
+    q_net = QNet(encoder=encoder,
+                 num_actions=num_actions).to(DEVICE)
+    target_q_net = QNet(encoder=encoder,
+                 num_actions=num_actions).to(DEVICE)
+    target_q_net.load_state_dict(q_net.state_dict())
+    
 
-    model = InverseModel(in_ch=3,im_wh=args.resize_to,
-                         h_ch=args.width,
-                         num_actions=num_labels,
-                         batch_norm=args.batch_norm).to(DEVICE)
+    model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
     model.apply(initialize_weights)
     opt = Adam(lr=args.lr, params=model.parameters())
     criterion = nn.CrossEntropyLoss()
+    q_criterion = nn.MSELoss()
+    qopt = Adam(lr=args.lr,params=q_net.parameters())
     
 
     
@@ -191,8 +203,13 @@ if __name__ == "__main__":
         losses = []
         accs = []
         while not done:
+            q_net.zero_grad()
             x0 = deepcopy(obs)
-            action = np.random.choice(action_space)
+            x0_tensor = convert_frame(env.render("rgb_array"),
+                        resize_to=args.resize_to,
+                        to_tensor=True).to(DEVICE)
+            q_values = q_net(x0_tensor[None,:])[0].cpu().data.numpy()
+            action = e_greedy(q_values)
             obs, reward, done, info = env.step(action)
             if reward > 0:
                 print(reward,done)
@@ -205,6 +222,12 @@ if __name__ == "__main__":
             x1 = deepcopy(obs)
             replay_buffer.push(state=x0,next_state=x1,action=a,reward=reward)
             x0,x1,a,r = replay_buffer.sample(args.batch_size)
+
+            y = r + gamma * torch.max(target_q_net(x1).detach(),dim=1)[0]
+            qloss= eval_q_loss(a=a,x0=x0,y=y)
+            qloss.backward()
+            qopt.step()
+
             loss, acc = do_one_update(x0,x1,a)
             losses.append(loss)
             accs.append(acc)
@@ -216,10 +239,11 @@ if __name__ == "__main__":
         
     
     
-    
 
 
 # In[ ]:
+
+
 
 
 # if __name__ == "__main__":
@@ -239,7 +263,7 @@ if __name__ == "__main__":
 #         vall, _ = fill_replay_buffer(vall,args.init_buffer_size,rollout_size=128,action_strings=args.action_strings,
 #                                                          env_name=args.env_name, resize_to = args.resize_to)
 
-    
+
 #     num_actions = len(label_list)
 #     in_ch = trl.dataset.tensors[0].size()[1] if args.offline else trl.memory[0].next_state.shape[2]
 #     model = InverseModel(in_ch=in_ch,im_wh=args.resize_to,h_ch=args.width,
@@ -247,8 +271,8 @@ if __name__ == "__main__":
 #     _ = model.apply(initialize_weights)
 #     opt = Adam(lr=args.lr, params=model.parameters())
 #     criterion = nn.CrossEntropyLoss()
-    
-    
+
+
 #     if not args.offline:
 #         numiter = int(args.dataset_size / args.batch_size)
 #     else:
@@ -259,11 +283,11 @@ if __name__ == "__main__":
 #         loss,acc,t = do_epoch(trl,epoch,mode="train",numiter=numiter)
 #         print("\tTr Time: %8.4f seconds"% (t))
 #         print("\tTr Loss: %8.4f \n\tTr Acc: %9.3f%%"%(loss,acc))
-        
+    
 #         model.eval()
 #         vloss,vacc,t = do_epoch(vall,epoch,mode="val",numiter=numiter)
 #         print("\n\tVal Time: %8.4f seconds"% (t))
 #         print("\tVal Loss: %8.4f \n\tVal Acc: %9.3f %%"%(vloss,vacc))
-        
     
+
 

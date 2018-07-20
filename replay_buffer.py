@@ -21,6 +21,7 @@ Transition = namedtuple('Transition',
 class ReplayMemory(object):
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
     def __init__(self, capacity=10**6, batch_size=64):
+        self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         self.capacity = capacity
         self.batch_size = batch_size
         self.memory = []
@@ -39,6 +40,7 @@ class ReplayMemory(object):
         x0s, x1s,as_, rs = zip(*transitions)
         x0, x1 = convert_frames(np.asarray(x0s),to_tensor=True,resize_to=(-1,-1)), convert_frames(np.asarray(x1s),to_tensor=True,resize_to=(-1,-1))
         a,r = torch.from_numpy(np.asarray(as_)), torch.from_numpy(np.asarray(rs)),
+        x0,x1,a,r = x0.to(self.DEVICE),x1.to(self.DEVICE),a.to(self.DEVICE),r.float().to(self.DEVICE)
         return x0,x1,a,r
         
     def __iter__(self):
@@ -48,7 +50,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[5]:
+# In[6]:
 
 
 # if __name__ == "__main__":
@@ -61,7 +63,7 @@ class ReplayMemory(object):
 #         rm.push(state=x0[i],next_state=x1[i],action=a[i], reward=r[i])
 
 
-# In[6]:
+# In[7]:
 
 
 def fill_replay_buffer(buffer,size, rollout_size=128,
@@ -85,7 +87,7 @@ def fill_replay_buffer(buffer,size, rollout_size=128,
  
 
 
-# In[10]:
+# In[8]:
 
 
 if __name__ == "__main__":
