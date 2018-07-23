@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[3]:
+# In[1]:
 
 
 import random
@@ -11,11 +11,11 @@ import numpy as np
 from load_data import convert_frames,convert_frame, DataCreator, plot_test
 
 
-# In[4]:
+# In[6]:
 
 
 Transition = namedtuple('Transition',
-                        ('state','next_state','action', 'reward'))
+                        ('state','next_state','action', 'reward', 'done'))
 
 
 class ReplayMemory(object):
@@ -37,11 +37,11 @@ class ReplayMemory(object):
 
     def sample(self, batch_size):
         transitions = random.sample(self.memory, batch_size)
-        x0s, x1s,as_, rs = zip(*transitions)
+        x0s, x1s,as_, rs, dones = zip(*transitions)
         x0, x1 = convert_frames(np.asarray(x0s),to_tensor=True,resize_to=(-1,-1)), convert_frames(np.asarray(x1s),to_tensor=True,resize_to=(-1,-1))
         a,r = torch.from_numpy(np.asarray(as_)), torch.from_numpy(np.asarray(rs)),
         x0,x1,a,r = x0.to(self.DEVICE),x1.to(self.DEVICE),a.to(self.DEVICE),r.float().to(self.DEVICE)
-        return x0,x1,a,r
+        return x0,x1,a,r, dones
         
     def __iter__(self):
         while True:
@@ -50,7 +50,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[6]:
+# In[7]:
 
 
 # if __name__ == "__main__":
@@ -63,10 +63,10 @@ class ReplayMemory(object):
 #         rm.push(state=x0[i],next_state=x1[i],action=a[i], reward=r[i])
 
 
-# In[7]:
+# In[8]:
 
 
-def fill_replay_buffer(buffer,size, rollout_size=128,
+def fill_replay_buffer(buffer,size, rollout_size=256,
                        env_name="MiniGrid-Empty-6x6-v0",
                        resize_to = (64,64),
                        action_space = range(3)):
@@ -77,17 +77,15 @@ def fill_replay_buffer(buffer,size, rollout_size=128,
                      action_space=action_space,
                      rollout_size=rollout_size)
     for rollout in range(num_rollouts):
-        for i, (x0,x1,a,r) in enumerate(dc.rollout_iterator()):
-            if i > size:
-                break
-            buffer.push(state=x0,action=a,next_state=x1,reward=r)
+        for i, (x0,x1,a,r,done) in enumerate(dc.rollout_iterator()):
+            buffer.push(state=x0,action=a,next_state=x1,reward=r,done=done)
     
 
     
  
 
 
-# In[8]:
+# In[9]:
 
 
 if __name__ == "__main__":
@@ -97,7 +95,7 @@ if __name__ == "__main__":
 
     fill_replay_buffer(rm,21)
 
-    x0,x1,a,r = rm.sample(batch_size=10)
+    x0,x1,a,r,done = rm.sample(batch_size=10)
 
     plot_test(x0,x1,a,r, label_list=["left","right","forward"] )
 

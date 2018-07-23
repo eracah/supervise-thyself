@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[4]:
 
 
 import gym
@@ -31,7 +31,7 @@ import sys
 from torch.utils.data import TensorDataset
 
 
-# In[2]:
+# In[5]:
 
 
 def convert_frame(obs, resize_to=(64,64),to_tensor=False):
@@ -47,7 +47,7 @@ def convert_frame(obs, resize_to=(64,64),to_tensor=False):
     return frame
 
 
-# In[3]:
+# In[6]:
 
 
 def convert_frames(frames,resize_to=(64,64),to_tensor=False):
@@ -56,7 +56,7 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
         
 
 
-# In[4]:
+# In[7]:
 
 
 class DataCreator(object):
@@ -90,27 +90,28 @@ class DataCreator(object):
         a = torch.tensor([int(action)])
         reward = torch.tensor([reward])
         x1 = deepcopy(obs)
-        return x0,x1,a,reward
+        return x0,x1,a,reward, done
 
     def rollout_iterator(self):
         env = gym.make(self.env_name)
         state = env.reset()
         obs = env.render('rgb_array')
         obs = self.convert(obs)
-        for i in range(self.rollout_size):
-            x0,x1,a,reward= self.collect_one_data_point(env,obs)
+        done = False
+        while not done:
+            x0,x1,a,reward, done= self.collect_one_data_point(env,obs)
             obs = deepcopy(x1)
 #             if self.to_tensor and torch.allclose(torch.eq(x0,x1).float(), torch.ones_like(x0))\
 #             or np.all(x0 == x1):
 #                 in_corner, label_name = check_for_corner(env)
 #                 if in_corner:
 #                     a = torch.tensor([self.label_list.index(label_name)])
-            yield x0,x1,a,reward
+            yield x0,x1,a,reward, done
 
     
 
     def do_rollout(self):      
-        rollouts = [(x0[None,:],x1[None,:],a,reward) for x0,x1,a,reward in self.rollout_iterator()]
+        rollouts = [(x0[None,:],x1[None,:],a,reward) for x0,x1,a,reward,done in self.rollout_iterator()]
         if self.to_tensor:
             x0,x1,y,r = [torch.cat(arr) for arr in zip(*rollouts)]
         else:
@@ -128,7 +129,7 @@ class DataCreator(object):
         
 
 
-# In[5]:
+# In[8]:
 
 
 def plot_test(x0,x1,y,r, label_list ):
@@ -145,7 +146,7 @@ def plot_test(x0,x1,y,r, label_list ):
     
 
 
-# In[10]:
+# In[9]:
 
 
 if __name__ == "__main__":
@@ -156,7 +157,7 @@ if __name__ == "__main__":
     
 
 
-# In[11]:
+# In[10]:
 
 
 if __name__ == "__main__":    

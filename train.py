@@ -13,7 +13,7 @@ from torch import nn
 
 import torch.functional as F
 
-from torch.optim import Adam
+from torch.optim import Adam, RMSprop
 import argparse
 import sys
 import copy
@@ -31,64 +31,7 @@ from models import InverseModel, QNet, Encoder
 from utils import mkstr, initialize_weights, write_ims, write_to_config_file
 
 
-# In[2]:
-
-
-def do_one_update(x0,x1,y, iter_= 0, mode="train"):
-    x0,x1, y = x0.to(DEVICE), x1.to(DEVICE), y.to(DEVICE)
-    if model.training:
-        opt.zero_grad()
-    output = model(x0,x1)
-
-    loss = criterion(output,y)
-    if model.training:
-        loss.backward()
-        opt.step()
-
-    action_guess = torch.argmax(output,dim=1)
-    acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
-    #save_incorrect_examples(y,action_guess,x0,x1,iter_)
-
-    return float(loss.data), acc #, inc_actions.data
-    
- 
-
-
-# In[3]:
-
-
-def eval_q_loss(x0,a,y):
-    q_vals = torch.gather(q_net(x0),1,a[:,None])[:,0]
-    q_loss = q_criterion(q_vals,y)
-    return q_loss
-
-
-# In[4]:
-
-
-def e_greedy(q_values,e=0.1):
-    r = np.random.uniform(0,1)
-    if r < e:
-        action = np.random.choice(len(q_values))
-    else:
-        action = np.argmax(q_values)
-    return action
-
-
-# In[5]:
-
-
-# if __name__ == "__main__":
-#     q_values = np.random.randn(3)
-
-#     e_greedy(q_values)
-
-#     q_values = torch.randn((3,))
-
-#     e_greedy(q_values)
-
-
-# In[6]:
+# In[77]:
 
 
 def setup_args():
@@ -100,10 +43,11 @@ def setup_args():
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-8x8-v0'),
-    parser.add_argument("--batch_size",type=int,default=64)
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[64, 64])
+    parser.add_argument("--lr", type=float, default=0.00025)
+    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
+    parser.add_argument("--batch_size",type=int,default=32)
+    parser.add_argument("--num_episodes",type=int,default=100)
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
     parser.add_argument("--epochs",type=int,default=100000)
     parser.add_argument("--dataset_size",type=int,default=60000)
     parser.add_argument("--width",type=int,default=32)
@@ -111,9 +55,15 @@ def setup_args():
     parser.add_argument("--batch_norm",action="store_true")
     parser.add_argument("--offline",action="store_true")
     parser.add_argument("--buffer_size",type=int,default=10**6)
-    parser.add_argument("--init_buffer_size",type=int,default=1000)
+    parser.add_argument("--init_buffer_size",type=int,default=50000)
     parser.add_argument("--embed_len",type=int,default=32)
-    parser.add_argument("--action_strings",type=str, nargs='+', default=["move_up", "move_down", "move_right", "move_left"])
+    parser.add_argument("--gamma", type=float,default=0.99)
+    parser.add_argument("--action_strings",type=str, nargs='+', default=["forward", "left", "right"])
+    parser.add_argument("--with_aux",action="store_true")
+    parser.add_argument("--C",type=int,default=10000)
+    parser.add_argument("--final_exploration_frame",type=int,default=1000000)
+    parser.add_argument("--update_frequency",type=int,default=4)
+    parser.add_argument("--noop_max",type=int,default=30)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
     if args.batch_size > args.dataset_size:
@@ -140,36 +90,71 @@ def setup_dirs_logs(args):
     return writer
 
 
-# In[7]:
+# In[78]:
 
 
-if __name__ == "__main__":
-    gamma = 0.9
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    args = setup_args()
-    args.action_strings = ["forward", "left", "right"]
-    writer = setup_dirs_logs(args)
-    env = gym.make(args.env_name)
-    if "MiniGrid" in args.env_name:
-        action_space = range(3)
-#         action_space = create_action_space_minigrid(env=env,
-#                                                     list_of_action_strings=args.action_strings)
+def do_one_update(x0,x1,y, iter_= 0, mode="train"):
+    if model.training:
+        opt.zero_grad()
+    output = model(x0,x1)
 
-# #         corner_actions = ["left_or_up", "right_or_up", "left_or_down", "right_or_down"]
-# #         label_list = deepcopy(args.action_strings) + corner_actions
-# #         num_labels = len(label_list)
-    else:
-        action_space = list(range(env.action_space.n))
-    num_actions = len(action_space)
+    loss = criterion(output,y)
+    if model.training:
+        loss.backward()
+        opt.step()
 
-    replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
-    fill_replay_buffer(replay_buffer,
-                       size=args.init_buffer_size, 
-                       rollout_size=128,
-                       env_name=args.env_name,
-                       resize_to = args.resize_to,
-                       action_space =action_space)
+    action_guess = torch.argmax(output,dim=1)
+    acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
+    #save_incorrect_examples(y,action_guess,x0,x1,iter_)
+
+    return float(loss.data), acc #, inc_actions.data
     
+ 
+
+
+# In[79]:
+
+
+def get_im_loss_acc(x0,x1,a):
+    y = a
+    a_pred = inv_model(x0,x1)
+    im_loss = im_criterion(a_pred,y)
+    action_guess = torch.argmax(a_pred,dim=1)
+    acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
+    return im_loss, acc
+    
+
+
+# In[80]:
+
+
+def get_q_loss(x0,x1,a,r, dones):
+    qbootstrap = args.gamma * torch.max(target_q_net(x1).detach(),dim=1)[0]
+    # zero out bootstraps for states that are the last state
+    qboostrap = (1-torch.tensor(dones)).cuda().float() * qbootstrap
+    y = r + qbootstrap
+    #print(dones)
+    q_vals = torch.gather(q_net(x0),1,a[:,None])[:,0]
+    q_loss = q_criterion(q_vals,y)
+    return q_loss
+
+
+# In[81]:
+
+
+def e_greedy(q_values,epsilon=0.1):
+    r = np.random.uniform(0,1)
+    if r < epsilon:
+        action = np.random.choice(len(q_values))
+    else:
+        action = np.argmax(q_values)
+    return action
+
+
+# In[82]:
+
+
+def setup_models():
     encoder = Encoder(in_ch=3,
                       im_wh=args.resize_to,
                       h_ch=args.width,
@@ -183,111 +168,180 @@ if __name__ == "__main__":
     target_q_net.load_state_dict(q_net.state_dict())
     
 
-    model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
-    model.apply(initialize_weights)
-    opt = Adam(lr=args.lr, params=model.parameters())
-    criterion = nn.CrossEntropyLoss()
-    q_criterion = nn.MSELoss()
-    qopt = Adam(lr=args.lr,params=q_net.parameters())
-    
-
-    
-    num_episodes = 100
-    for episode in range(num_episodes):
-        print("episode %i"%episode)
-        done = False
-        state = env.reset()
-        obs = convert_frame(env.render("rgb_array"),
-                        resize_to=args.resize_to,
-                        to_tensor=False)
-        losses = []
-        accs = []
-        while not done:
-            q_net.zero_grad()
-            x0 = deepcopy(obs)
-            x0_tensor = convert_frame(env.render("rgb_array"),
-                        resize_to=args.resize_to,
-                        to_tensor=True).to(DEVICE)
-            q_values = q_net(x0_tensor[None,:])[0].cpu().data.numpy()
-            action = e_greedy(q_values)
-            obs, reward, done, info = env.step(action)
-            if reward > 0:
-                print(reward,done)
-
-            obs = convert_frame(env.render("rgb_array"),
-                            resize_to=args.resize_to,
-                            to_tensor=False)
-            a = torch.tensor([action_space.index(action)])
-            reward = torch.tensor([reward])
-            x1 = deepcopy(obs)
-            replay_buffer.push(state=x0,next_state=x1,action=a,reward=reward)
-            x0,x1,a,r = replay_buffer.sample(args.batch_size)
-
-            y = r + gamma * torch.max(target_q_net(x1).detach(),dim=1)[0]
-            qloss= eval_q_loss(a=a,x0=x0,y=y)
-            qloss.backward()
-            qopt.step()
-
-            loss, acc = do_one_update(x0,x1,a)
-            losses.append(loss)
-            accs.append(acc)
-        print(env.step_count)
-        loss, acc = np.mean(losses), np.mean(accs)
-        writer.add_scalar("episode_loss",loss,global_step=episode)
-        writer.add_scalar("episode_acc",acc,global_step=episode)
-        print("\tEpisode Loss: %8.4f \n\tEpisode Acc: %9.3f%%"%(loss,acc))
-        
-    
+    inv_model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
+    inv_model.apply(initialize_weights)
+    return encoder,q_net, target_q_net, inv_model
     
 
 
-# In[ ]:
+# In[83]:
 
 
+def setup_replay_buffer(init_buffer_size):
+    print("setting up buffer")
+    replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
+    fill_replay_buffer(replay_buffer,
+                       size=init_buffer_size, 
+                       rollout_size=256,
+                       env_name=args.env_name,
+                       resize_to = args.resize_to,
+                       action_space =action_space)
+    print("buffer filled!")
+    return replay_buffer
+    
+
+
+# In[84]:
 
 
 # if __name__ == "__main__":
-#     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-#     args = setup_args()
-#     writer = setup_dirs_logs(args)
+#     q_values = np.random.randn(3)
 
-#     if args.offline:
-#         trl, vall, tel, label_list = get_tensor_data_loaders(rollout_size=128,action_strings=args.action_strings,
-#                                                          env_name=args.env_name, resize_to = args.resize_to,
-#                                                         batch_size = args.batch_size, total_examples=args.dataset_size)
-#     else:
-#         trl = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
-#         trl, label_list = fill_replay_buffer(trl,args.init_buffer_size,rollout_size=128,action_strings=args.action_strings,
-#                                                          env_name=args.env_name, resize_to = args.resize_to)
-#         vall = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
-#         vall, _ = fill_replay_buffer(vall,args.init_buffer_size,rollout_size=128,action_strings=args.action_strings,
-#                                                          env_name=args.env_name, resize_to = args.resize_to)
+#     e_greedy(q_values)
+
+#     q_values = torch.randn((3,))
+
+#     e_greedy(q_values)
 
 
-#     num_actions = len(label_list)
-#     in_ch = trl.dataset.tensors[0].size()[1] if args.offline else trl.memory[0].next_state.shape[2]
-#     model = InverseModel(in_ch=in_ch,im_wh=args.resize_to,h_ch=args.width,
-#                          num_actions=num_actions,batch_norm=args.batch_norm).to(DEVICE)
-#     _ = model.apply(initialize_weights)
-#     opt = Adam(lr=args.lr, params=model.parameters())
-#     criterion = nn.CrossEntropyLoss()
+# In[85]:
 
 
-#     if not args.offline:
-#         numiter = int(args.dataset_size / args.batch_size)
-#     else:
-#         numiter = -1
-#     for epoch in range(args.epochs):
-#         model.train()
-#         print("Beginning epoch %i"%(epoch))
-#         loss,acc,t = do_epoch(trl,epoch,mode="train",numiter=numiter)
-#         print("\tTr Time: %8.4f seconds"% (t))
-#         print("\tTr Loss: %8.4f \n\tTr Acc: %9.3f%%"%(loss,acc))
-    
-#         model.eval()
-#         vloss,vacc,t = do_epoch(vall,epoch,mode="val",numiter=numiter)
-#         print("\n\tVal Time: %8.4f seconds"% (t))
-#         print("\tVal Loss: %8.4f \n\tVal Acc: %9.3f %%"%(vloss,vacc))
+def setup_env():
+    env = gym.make(args.env_name)
+    if "MiniGrid" in args.env_name:
+        action_space = range(3)
+    else:
+        action_space = list(range(env.action_space.n))
+    num_actions = len(action_space)
+    return env, action_space, num_actions
     
 
+
+# In[86]:
+
+
+def get_next_action(epsilon=0.1):
+    x0 = convert_frame(env.render("rgb_array"),
+                        resize_to=args.resize_to,
+                        to_tensor=True).to(DEVICE)
+    q_values = q_net(x0[None,:])[0].cpu().data.numpy()
+    action = e_greedy(q_values,epsilon=epsilon)
+    return int(action)
+
+
+# In[87]:
+
+
+def env_step(epsilon=0.1):
+    # 8 bit x0
+    x0 = convert_frame(env.render("rgb_array"),
+            resize_to=args.resize_to,
+            to_tensor=False)
+
+    action = get_next_action(epsilon=epsilon)
+    obs, reward, done, info = env.step(action)
+
+    x1 = convert_frame(env.render("rgb_array"),
+                resize_to=args.resize_to,
+                to_tensor=False)
+    a = torch.tensor([action])
+    reward = torch.tensor([reward])
+    return x0,x1,a,reward, done
+    
+
+
+# In[88]:
+
+
+def do_k_episodes(k=1,epsilon=0.1):
+    rewards = []
+    with torch.no_grad():
+        for ep in range(k):
+            done = False
+            env.reset()
+            cum_reward = 0
+            while not done:
+                _,_,_,reward, done = env_step(epsilon=epsilon)
+                cum_reward += float(reward)
+            rewards.append(cum_reward)
+        return np.mean(rewards), rewards
+            
+            
+    
+
+
+# In[90]:
+
+
+if __name__ == "__main__":
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    epsilon = 1
+    args = setup_args()
+    args.with_aux = False
+    writer = setup_dirs_logs(args)
+    env, action_space, num_actions = setup_env()
+    
+    replay_buffer = setup_replay_buffer(args.init_buffer_size)
+    
+    encoder,    q_net,    target_q_net,    inv_model = setup_models()
+    
+
+    im_criterion, q_criterion  = nn.CrossEntropyLoss(), nn.MSELoss()
+    
+    im_opt = Adam(lr=args.lr, params=inv_model.parameters())
+    qopt = Adam(lr=args.lr,params=q_net.parameters())
+    global_steps = 0
+    for episode in range(args.num_episodes):
+        print("episode %i"%episode)
+        done = False
+        state = env.reset()
+        im_losses = []
+        im_accs = []
+        qlosses = []
+        while not done:
+            if global_steps % args.C == 0:
+                target_q_net.load_state_dict(q_net.state_dict())
+            im_opt.zero_grad()
+            qopt.zero_grad()
+            
+            #uint8 single frame
+            x0,x1,a,r,done = env_step(epsilon=epsilon)
+            replay_buffer.push(state=x0,next_state=x1,action=a,reward=r,done=done)
+            
+            #batch of pytorch cuda float tensors 
+            x0s,x1s,a_s,rs,dones = replay_buffer.sample(args.batch_size)
+
+            
+            qloss = get_q_loss(x0s,x1s,a_s,rs,dones)
+            qloss.backward()
+            if args.with_aux:
+                im_loss, acc = get_im_loss_acc(x0s,x1s,a_s)
+                im_accs.append(acc)
+                im_losses.append(float(im_loss.data))
+                im_loss.backward()
+                im_opt.step()
+            if global_steps % args.update_frequency == 0:
+                qopt.step()
+            qlosses.append(float(qloss.data))
+            global_steps += 1
+            epsilon -= (0.9 / args.final_exploration_frame )
+
+        #print(env.step_count)
+        #print(epsilon)
+        qloss = np.mean(qlosses)
+        writer.add_scalar("episode_loss",qloss,global_step=episode)
+        #writer.add_scalar("episode_acc",acc,global_step=episode)
+        print("\tEpisode QLoss: %8.4f"%(qloss)) 
+        if args.with_aux:
+            imloss, im_acc = np.mean(im_losses), np.mean(im_accs)
+            print("IM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
+            
+        if episode % 5 == 0:
+            avg_reward, rewards = do_k_episodes(k=5,epsilon=0.1)
+            writer.add_scalar("avg_episode_reward",avg_reward,global_step=episode)
+            print("\tAverage Episode Reward for Qnet after %i Episodes: %8.4f"%(episode,avg_reward))
+        
+    
+    
 
