@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[4]:
+# In[177]:
 
 
 import gym
@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 
 from gym_minigrid.wrappers import *
 from PIL import Image
-from torchvision.transforms import Compose,Normalize,Resize,ToTensor
+from torchvision.transforms import Compose,Normalize,Resize,ToTensor, Grayscale
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import ImageFolder
 import numpy as np
@@ -31,14 +31,28 @@ import sys
 from torch.utils.data import TensorDataset
 
 
-# In[5]:
+# In[225]:
 
 
-def convert_frame(obs, resize_to=(64,64),to_tensor=False):
+# env = gym.make("MsPacman-v0")
+# env.reset()
+# for i in range(100):
+#     obs,_,_,_ = env.step(0)
+
+# a=convert_frame(obs,resize_to=(84,84))
+
+# plt.imshow(a,cmap="gray")
+
+
+# In[226]:
+
+
+def convert_frame(obs, resize_to=(84,84),to_tensor=False):
     pil_image = Image.fromarray(obs, 'RGB')
+    
     transforms = [Resize(resize_to)] if resize_to != (-1,-1) else []
     if to_tensor:
-        transforms.extend([ToTensor(),Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])])
+        transforms.extend([ToTensor(),Normalize([0.5],[0.5])])
     transforms = Compose(transforms)
     frame = transforms(pil_image)
     if not to_tensor:
@@ -47,7 +61,7 @@ def convert_frame(obs, resize_to=(64,64),to_tensor=False):
     return frame
 
 
-# In[6]:
+# In[135]:
 
 
 def convert_frames(frames,resize_to=(64,64),to_tensor=False):
@@ -56,7 +70,7 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
         
 
 
-# In[7]:
+# In[136]:
 
 
 class DataCreator(object):
@@ -71,13 +85,6 @@ class DataCreator(object):
         
         self.action_space = action_space
         self.to_tensor = to_tensor
-#         if "MiniGrid" in env_name:
-#             corner_actions = ["left_or_up", "right_or_up", "left_or_down", "right_or_down"]
-#         else:
-#             corner_actions = []
-        
-#         self.label_list = deepcopy(action_strings) #+ corner_actions
-#         #print(self.label_list)
         self.convert = partial(convert_frame, resize_to = self.resize_to,to_tensor=self.to_tensor)
 
     
@@ -101,30 +108,8 @@ class DataCreator(object):
         while not done:
             x0,x1,a,reward, done= self.collect_one_data_point(env,obs)
             obs = deepcopy(x1)
-#             if self.to_tensor and torch.allclose(torch.eq(x0,x1).float(), torch.ones_like(x0))\
-#             or np.all(x0 == x1):
-#                 in_corner, label_name = check_for_corner(env)
-#                 if in_corner:
-#                     a = torch.tensor([self.label_list.index(label_name)])
+
             yield x0,x1,a,reward, done
-
-    
-
-    def do_rollout(self):      
-        rollouts = [(x0[None,:],x1[None,:],a,reward) for x0,x1,a,reward,done in self.rollout_iterator()]
-        if self.to_tensor:
-            x0,x1,y,r = [torch.cat(arr) for arr in zip(*rollouts)]
-        else:
-            x0,x1,y,r = [np.concatenate(arr) for arr in zip(*rollouts)]
-
-        return x0, x1, y, r
-
-    def create_tensor_dataset(self,size):
-        num_rollouts = int(np.ceil(size / self.rollout_size))
-        rollouts = [self.do_rollout() for rollout in range(num_rollouts)]
-        x0,x1,y,r = [torch.cat(list_)[:size] for list_ in zip(*rollouts)]
-
-        return TensorDataset(x0, x1, y,r)
     
         
 

@@ -31,7 +31,7 @@ from models import InverseModel, QNet, Encoder
 from utils import mkstr, initialize_weights, write_ims, write_to_config_file
 
 
-# In[77]:
+# In[2]:
 
 
 def setup_args():
@@ -49,7 +49,6 @@ def setup_args():
     parser.add_argument("--num_episodes",type=int,default=100)
     parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
     parser.add_argument("--epochs",type=int,default=100000)
-    parser.add_argument("--dataset_size",type=int,default=60000)
     parser.add_argument("--width",type=int,default=32)
     #parser.add_argument("--grayscale",action="store_true")
     parser.add_argument("--batch_norm",action="store_true")
@@ -64,19 +63,19 @@ def setup_args():
     parser.add_argument("--final_exploration_frame",type=int,default=1000000)
     parser.add_argument("--update_frequency",type=int,default=4)
     parser.add_argument("--noop_max",type=int,default=30)
+    parser.add_argument("--reward_clip",action="store_true")
+    parser.add_argument("--num_eval_eps",type=int,default=25)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
-    if args.batch_size > args.dataset_size:
-        args.batch_size = args.dataset_size
+
     sys.argv = tmp_argv
     if test_notebook:
-        args.dataset_size = 1000
+        args.init_buffer_size = 100
         #args.online=True
     mstr = partial(mkstr,args=args)
     output_dirname = ("notebook_" if test_notebook else "") + "_".join([mstr("env_name"),
                                                                         mstr("lr"),
                                                                         mstr("width"),
-                                                                        mstr("dataset_size"),
                                                                         mstr("resize_to")
                                                                        ])
     args.output_dirname = output_dirname
@@ -90,7 +89,7 @@ def setup_dirs_logs(args):
     return writer
 
 
-# In[78]:
+# In[3]:
 
 
 def do_one_update(x0,x1,y, iter_= 0, mode="train"):
@@ -112,7 +111,7 @@ def do_one_update(x0,x1,y, iter_= 0, mode="train"):
  
 
 
-# In[79]:
+# In[4]:
 
 
 def get_im_loss_acc(x0,x1,a):
@@ -125,21 +124,24 @@ def get_im_loss_acc(x0,x1,a):
     
 
 
-# In[80]:
+# In[5]:
 
 
 def get_q_loss(x0,x1,a,r, dones):
     qbootstrap = args.gamma * torch.max(target_q_net(x1).detach(),dim=1)[0]
     # zero out bootstraps for states that are the last state
-    qboostrap = (1-torch.tensor(dones)).cuda().float() * qbootstrap
+    qbootsrap = (1-torch.tensor(dones)).cuda().float() * qbootstrap
     y = r + qbootstrap
     #print(dones)
     q_vals = torch.gather(q_net(x0),1,a[:,None])[:,0]
-    q_loss = q_criterion(q_vals,y)
+    error = y - q_vals
+    error = torch.clamp(error,-1.0,1.0)
+    #print(error)
+    q_loss = torch.sum(error**2)
     return q_loss
 
 
-# In[81]:
+# In[6]:
 
 
 def e_greedy(q_values,epsilon=0.1):
@@ -151,7 +153,7 @@ def e_greedy(q_values,epsilon=0.1):
     return action
 
 
-# In[82]:
+# In[7]:
 
 
 def setup_models():
@@ -174,7 +176,7 @@ def setup_models():
     
 
 
-# In[83]:
+# In[8]:
 
 
 def setup_replay_buffer(init_buffer_size):
@@ -185,13 +187,14 @@ def setup_replay_buffer(init_buffer_size):
                        rollout_size=256,
                        env_name=args.env_name,
                        resize_to = args.resize_to,
-                       action_space =action_space)
+                       action_space =action_space,
+                      reward_clip=args.reward_clip)
     print("buffer filled!")
     return replay_buffer
     
 
 
-# In[84]:
+# In[9]:
 
 
 # if __name__ == "__main__":
@@ -204,7 +207,7 @@ def setup_replay_buffer(init_buffer_size):
 #     e_greedy(q_values)
 
 
-# In[85]:
+# In[10]:
 
 
 def setup_env():
@@ -218,7 +221,7 @@ def setup_env():
     
 
 
-# In[86]:
+# In[11]:
 
 
 def get_next_action(epsilon=0.1):
@@ -230,7 +233,7 @@ def get_next_action(epsilon=0.1):
     return int(action)
 
 
-# In[87]:
+# In[12]:
 
 
 def env_step(epsilon=0.1):
@@ -251,7 +254,7 @@ def env_step(epsilon=0.1):
     
 
 
-# In[88]:
+# In[13]:
 
 
 def do_k_episodes(k=1,epsilon=0.1):
@@ -271,13 +274,14 @@ def do_k_episodes(k=1,epsilon=0.1):
     
 
 
-# In[90]:
+# In[15]:
 
 
 if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     epsilon = 1
     args = setup_args()
+    args.reward_clip = True
     args.with_aux = False
     writer = setup_dirs_logs(args)
     env, action_space, num_actions = setup_env()
@@ -291,6 +295,7 @@ if __name__ == "__main__":
     
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
     qopt = Adam(lr=args.lr,params=q_net.parameters())
+    #qopt = RMSprop(lr=args.lr,params=q_net.parameters())
     global_steps = 0
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
@@ -307,12 +312,15 @@ if __name__ == "__main__":
             
             #uint8 single frame
             x0,x1,a,r,done = env_step(epsilon=epsilon)
+            if args.reward_clip:
+                r = np.clip(r, -1, 1)
             replay_buffer.push(state=x0,next_state=x1,action=a,reward=r,done=done)
             
             #batch of pytorch cuda float tensors 
             x0s,x1s,a_s,rs,dones = replay_buffer.sample(args.batch_size)
 
-            
+
+
             qloss = get_q_loss(x0s,x1s,a_s,rs,dones)
             qloss.backward()
             if args.with_aux:
@@ -325,7 +333,10 @@ if __name__ == "__main__":
                 qopt.step()
             qlosses.append(float(qloss.data))
             global_steps += 1
-            epsilon -= (0.9 / args.final_exploration_frame )
+            if global_steps < args.final_exploration_frame:
+                epsilon -= (0.9 / args.final_exploration_frame )
+            else:
+                epsilon = 0.1
 
         #print(env.step_count)
         #print(epsilon)
@@ -338,7 +349,7 @@ if __name__ == "__main__":
             print("IM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
             
         if episode % 5 == 0:
-            avg_reward, rewards = do_k_episodes(k=5,epsilon=0.1)
+            avg_reward, rewards = do_k_episodes(k=args.num_eval_eps,epsilon=0.0)
             writer.add_scalar("avg_episode_reward",avg_reward,global_step=episode)
             print("\tAverage Episode Reward for Qnet after %i Episodes: %8.4f"%(episode,avg_reward))
         

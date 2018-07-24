@@ -69,16 +69,23 @@ class ReplayMemory(object):
 def fill_replay_buffer(buffer,size, rollout_size=256,
                        env_name="MiniGrid-Empty-6x6-v0",
                        resize_to = (64,64),
-                       action_space = range(3)):
+                       action_space = range(3), reward_clip=True):
     #fills replay buffer with size examples
     num_rollouts = int(np.ceil(size / rollout_size))
     dc = DataCreator(env_name=env_name,
                      resize_to = resize_to,
                      action_space=action_space,
                      rollout_size=rollout_size)
+    global_size=0
     for rollout in range(num_rollouts):
         for i, (x0,x1,a,r,done) in enumerate(dc.rollout_iterator()):
+            if global_size >= size:
+                return
+            if reward_clip:
+                r = np.clip(r,-1,1)
             buffer.push(state=x0,action=a,next_state=x1,reward=r,done=done)
+            global_size += 1
+
     
 
     
