@@ -20,7 +20,7 @@ import copy
 from copy import deepcopy
 from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
-from load_data import convert_frame
+from utils import convert_frame
 import numpy as np
 import time
 import json
@@ -28,7 +28,7 @@ from pathlib import Path
 from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
 from models import InverseModel, QNet, Encoder
-from utils import mkstr, initialize_weights, write_ims, write_to_config_file
+from utils import mkstr, initialize_weights, write_ims, write_to_config_file,collect_one_data_point
 
 
 # In[2]:
@@ -182,32 +182,19 @@ def setup_models():
 def setup_replay_buffer(init_buffer_size):
     print("setting up buffer")
     replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
-    fill_replay_buffer(replay_buffer,
-                       size=init_buffer_size, 
+    fill_replay_buffer(buffer=replay_buffer,
+                       size=init_buffer_size,
                        rollout_size=256,
-                       env_name=args.env_name,
+                       env = env,
                        resize_to = args.resize_to,
-                       action_space =action_space,
-                      reward_clip=args.reward_clip)
+                       policy= lambda x0: np.random.choice(action_space),
+                      )
     print("buffer filled!")
     return replay_buffer
     
 
 
 # In[9]:
-
-
-# if __name__ == "__main__":
-#     q_values = np.random.randn(3)
-
-#     e_greedy(q_values)
-
-#     q_values = torch.randn((3,))
-
-#     e_greedy(q_values)
-
-
-# In[10]:
 
 
 def setup_env():
@@ -221,40 +208,17 @@ def setup_env():
     
 
 
-# In[11]:
+# In[10]:
 
 
-def get_next_action(epsilon=0.1):
-    x0 = convert_frame(env.render("rgb_array"),
-                        resize_to=args.resize_to,
-                        to_tensor=True).to(DEVICE)
+def qpolicy(x0,epsilon=0.1):
     q_values = q_net(x0[None,:])[0].cpu().data.numpy()
     action = e_greedy(q_values,epsilon=epsilon)
     return int(action)
-
-
-# In[12]:
-
-
-def env_step(epsilon=0.1):
-    # 8 bit x0
-    x0 = convert_frame(env.render("rgb_array"),
-            resize_to=args.resize_to,
-            to_tensor=False)
-
-    action = get_next_action(epsilon=epsilon)
-    obs, reward, done, info = env.step(action)
-
-    x1 = convert_frame(env.render("rgb_array"),
-                resize_to=args.resize_to,
-                to_tensor=False)
-    a = torch.tensor([action])
-    reward = torch.tensor([reward])
-    return x0,x1,a,reward, done
     
 
 
-# In[13]:
+# In[11]:
 
 
 def do_k_episodes(k=1,epsilon=0.1):
@@ -265,7 +229,9 @@ def do_k_episodes(k=1,epsilon=0.1):
             env.reset()
             cum_reward = 0
             while not done:
-                _,_,_,reward, done = env_step(epsilon=epsilon)
+                _,_,_,reward, done = collect_one_data_point(convert_fxn=convert_fxn,
+                                                            env=env,
+                                                            policy=partial(qpolicy,epsilon=epsilon))
                 cum_reward += float(reward)
             rewards.append(cum_reward)
         return np.mean(rewards), rewards
@@ -274,7 +240,7 @@ def do_k_episodes(k=1,epsilon=0.1):
     
 
 
-# In[15]:
+# In[13]:
 
 
 if __name__ == "__main__":
@@ -285,7 +251,7 @@ if __name__ == "__main__":
     args.with_aux = False
     writer = setup_dirs_logs(args)
     env, action_space, num_actions = setup_env()
-    
+    convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     replay_buffer = setup_replay_buffer(args.init_buffer_size)
     
     encoder,    q_net,    target_q_net,    inv_model = setup_models()
@@ -310,8 +276,11 @@ if __name__ == "__main__":
             im_opt.zero_grad()
             qopt.zero_grad()
             
+            policy = partial(qpolicy,epsilon=epsilon)
             #uint8 single frame
-            x0,x1,a,r,done = env_step(epsilon=epsilon)
+            x0,x1,a,r, done = collect_one_data_point(convert_fxn=convert_fxn,
+                                                          env=env,
+                                                          policy=policy)
             if args.reward_clip:
                 r = np.clip(r, -1, 1)
             replay_buffer.push(state=x0,next_state=x1,action=a,reward=r,done=done)
