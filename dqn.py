@@ -55,38 +55,56 @@ from utils import mkstr, initialize_weights, write_ims, write_to_config_file,col
 # In[ ]:
 
 
-class ActionPredictor(nn.Module):
-    def __init__(self, num_actions, in_ch, h_ch=256):
-        super(ActionPredictor,self).__init__()
-        self.predictor = nn.Sequential(
-            nn.Linear(in_features=in_ch,out_features=h_ch),
-            nn.ReLU(),
-            nn.Linear(in_features=h_ch,out_features=num_actions)
-        )
-    def forward(self,x):
-        return self.predictor(x)
-        
-
-class InverseModel(nn.Module):
-    def __init__(self,encoder, num_actions=3):
-        super(InverseModel,self).__init__()
-        self.encoder = encoder
-        self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
-    def forward(self,x0,x1):
-        f0 = self.encoder(x0)
-        f1 = self.encoder(x1)
-        fboth = torch.cat([f0,f1],dim=-1)
-        return self.ap(fboth)
+def get_q_loss(x0,x1,a,r, dones, gamma, q_net, target_q_net,):
+    qbootstrap = gamma * torch.max(target_q_net(x1).detach(),dim=1)[0]
+    # zero out bootstraps for states that are the last state
+    qbootsrap = (1-torch.tensor(dones)).cuda().float() * qbootstrap
+    y = r + qbootstrap
+    #print(dones)
+    q_vals = torch.gather(q_net(x0),1,a[:,None])[:,0]
+    error = y - q_vals
+    error = torch.clamp(error,-1.0,1.0)
+    #print(error)
+    q_loss = torch.sum(error**2)
+    return q_loss
 
 
 # In[ ]:
 
 
-def get_im_loss_acc(x0,x1,a):
-    y = a
-    a_pred = inv_model(x0,x1)
-    im_loss = im_criterion(a_pred,y)
-    action_guess = torch.argmax(a_pred,dim=1)
-    acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
-    return im_loss, acc
+def e_greedy(q_values,epsilon=0.1):
+    r = np.random.uniform(0,1)
+    if r < epsilon:
+        action = np.random.choice(len(q_values))
+    else:
+        action = np.argmax(q_values)
+    return action
+
+
+# In[ ]:
+
+
+class QNet(nn.Module):
+    def __init__(self,encoder,num_actions=3, h_ch=32):
+        super(QNet,self).__init__()
+        self.encoder = encoder
+        self.q_enc = nn.Sequential(
+            nn.Linear(in_features=self.encoder.embed_len,out_features=h_ch),
+            nn.ELU(),
+            nn.Linear(in_features=h_ch,out_features=h_ch),
+            nn.ELU(),
+            nn.Linear(in_features=h_ch,out_features=num_actions)
+        )
+    def forward(self,x):
+        h = self.encoder(x)
+        return self.q_enc(h)
+
+
+# In[ ]:
+
+
+def qpolicy(x0,q_net,epsilon=0.1):
+    q_values = q_net(x0[None,:])[0].cpu().data.numpy()
+    action = e_greedy(q_values,epsilon=epsilon)
+    return int(action)
 

@@ -169,3 +169,22 @@ def plot_test(x0s,x1s,ys,rs, label_list):
             plot(x0s[i],x1s[i],ys[i],i)
     plt.show()
 
+
+# In[ ]:
+
+
+def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
+    rewards = []
+    with torch.no_grad():
+        for ep in range(k):
+            done = False
+            env.reset()
+            cum_reward = 0
+            while not done:
+                _,_,_,reward, done = collect_one_data_point(convert_fxn=convert_fxn,
+                                                            env=env,
+                                                            policy=policy)
+                cum_reward += float(reward)
+            rewards.append(cum_reward)
+        return np.mean(rewards), rewards
+

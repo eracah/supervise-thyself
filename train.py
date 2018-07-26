@@ -20,15 +20,17 @@ import copy
 from copy import deepcopy
 from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
-from utils import convert_frame
+
 import numpy as np
 import time
 import json
 from pathlib import Path
 from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
-from models import InverseModel, QNet, Encoder
-from utils import mkstr, initialize_weights, write_ims, write_to_config_file,collect_one_data_point
+from base_encoder import Encoder
+from dqn import get_q_loss, QNet, qpolicy
+from inverse_model import InverseModel, get_im_loss_acc
+from utils import mkstr, initialize_weights, write_ims,                write_to_config_file,collect_one_data_point,                convert_frame, convert_frames, do_k_episodes
 
 
 # In[2]:
@@ -88,97 +90,6 @@ def setup_dirs_logs(args):
 
     return writer
 
-
-# In[3]:
-
-
-def do_one_update(x0,x1,y, iter_= 0, mode="train"):
-    if model.training:
-        opt.zero_grad()
-    output = model(x0,x1)
-
-    loss = criterion(output,y)
-    if model.training:
-        loss.backward()
-        opt.step()
-
-    action_guess = torch.argmax(output,dim=1)
-    acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
-    #save_incorrect_examples(y,action_guess,x0,x1,iter_)
-
-    return float(loss.data), acc #, inc_actions.data
-    
- 
-
-
-# In[4]:
-
-
-def get_im_loss_acc(x0,x1,a):
-    y = a
-    a_pred = inv_model(x0,x1)
-    im_loss = im_criterion(a_pred,y)
-    action_guess = torch.argmax(a_pred,dim=1)
-    acc = (float(torch.sum(torch.eq(y,action_guess)).data) / y.size(0))*100
-    return im_loss, acc
-    
-
-
-# In[5]:
-
-
-def get_q_loss(x0,x1,a,r, dones):
-    qbootstrap = args.gamma * torch.max(target_q_net(x1).detach(),dim=1)[0]
-    # zero out bootstraps for states that are the last state
-    qbootsrap = (1-torch.tensor(dones)).cuda().float() * qbootstrap
-    y = r + qbootstrap
-    #print(dones)
-    q_vals = torch.gather(q_net(x0),1,a[:,None])[:,0]
-    error = y - q_vals
-    error = torch.clamp(error,-1.0,1.0)
-    #print(error)
-    q_loss = torch.sum(error**2)
-    return q_loss
-
-
-# In[6]:
-
-
-def e_greedy(q_values,epsilon=0.1):
-    r = np.random.uniform(0,1)
-    if r < epsilon:
-        action = np.random.choice(len(q_values))
-    else:
-        action = np.argmax(q_values)
-    return action
-
-
-# In[7]:
-
-
-def setup_models():
-    encoder = Encoder(in_ch=3,
-                      im_wh=args.resize_to,
-                      h_ch=args.width,
-                      embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(DEVICE)
-    
-    q_net = QNet(encoder=encoder,
-                 num_actions=num_actions).to(DEVICE)
-    target_q_net = QNet(encoder=encoder,
-                 num_actions=num_actions).to(DEVICE)
-    target_q_net.load_state_dict(q_net.state_dict())
-    
-
-    inv_model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
-    inv_model.apply(initialize_weights)
-    return encoder,q_net, target_q_net, inv_model
-    
-
-
-# In[8]:
-
-
 def setup_replay_buffer(init_buffer_size):
     print("setting up buffer")
     replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
@@ -191,11 +102,26 @@ def setup_replay_buffer(init_buffer_size):
                       )
     print("buffer filled!")
     return replay_buffer
+
+def setup_models():
+    encoder = Encoder(in_ch=3,
+                      im_wh=args.resize_to,
+                      h_ch=args.width,
+                      embed_len=args.embed_len,
+                      batch_norm=args.batch_norm).to(DEVICE)
+    
+    q_net = QNet(encoder=encoder,
+                 num_actions=num_actions).to(DEVICE)
+    q_net.apply(initialize_weights)
+    target_q_net = QNet(encoder=encoder,
+                 num_actions=num_actions).to(DEVICE)
+    target_q_net.load_state_dict(q_net.state_dict())
     
 
-
-# In[9]:
-
+    inv_model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
+    inv_model.apply(initialize_weights)
+    return encoder,q_net, target_q_net, inv_model
+    
 
 def setup_env():
     env = gym.make(args.env_name)
@@ -208,39 +134,7 @@ def setup_env():
     
 
 
-# In[10]:
-
-
-def qpolicy(x0,epsilon=0.1):
-    q_values = q_net(x0[None,:])[0].cpu().data.numpy()
-    action = e_greedy(q_values,epsilon=epsilon)
-    return int(action)
-    
-
-
-# In[11]:
-
-
-def do_k_episodes(k=1,epsilon=0.1):
-    rewards = []
-    with torch.no_grad():
-        for ep in range(k):
-            done = False
-            env.reset()
-            cum_reward = 0
-            while not done:
-                _,_,_,reward, done = collect_one_data_point(convert_fxn=convert_fxn,
-                                                            env=env,
-                                                            policy=partial(qpolicy,epsilon=epsilon))
-                cum_reward += float(reward)
-            rewards.append(cum_reward)
-        return np.mean(rewards), rewards
-            
-            
-    
-
-
-# In[13]:
+# In[4]:
 
 
 if __name__ == "__main__":
@@ -276,7 +170,10 @@ if __name__ == "__main__":
             im_opt.zero_grad()
             qopt.zero_grad()
             
-            policy = partial(qpolicy,epsilon=epsilon)
+            policy = partial(qpolicy,q_net=q_net,epsilon=epsilon)
+            calc_q_loss = partial(get_q_loss,gamma=args.gamma,
+                                  q_net=q_net,
+                                  target_q_net=target_q_net)
             #uint8 single frame
             x0,x1,a,r, done = collect_one_data_point(convert_fxn=convert_fxn,
                                                           env=env,
@@ -289,8 +186,8 @@ if __name__ == "__main__":
             x0s,x1s,a_s,rs,dones = replay_buffer.sample(args.batch_size)
 
 
-
-            qloss = get_q_loss(x0s,x1s,a_s,rs,dones)
+            
+            qloss = calc_q_loss(x0s,x1s,a_s,rs,dones)
             qloss.backward()
             if args.with_aux:
                 im_loss, acc = get_im_loss_acc(x0s,x1s,a_s)
@@ -307,8 +204,6 @@ if __name__ == "__main__":
             else:
                 epsilon = 0.1
 
-        #print(env.step_count)
-        #print(epsilon)
         qloss = np.mean(qlosses)
         writer.add_scalar("episode_loss",qloss,global_step=episode)
         #writer.add_scalar("episode_acc",acc,global_step=episode)
@@ -318,7 +213,8 @@ if __name__ == "__main__":
             print("IM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
             
         if episode % 5 == 0:
-            avg_reward, rewards = do_k_episodes(k=args.num_eval_eps,epsilon=0.0)
+            avg_reward, rewards = do_k_episodes(k=args.num_eval_eps,epsilon=0.0,convert_fxn=convert_fxn,
+                                                env=env,policy=policy)
             writer.add_scalar("avg_episode_reward",avg_reward,global_step=episode)
             print("\tAverage Episode Reward for Qnet after %i Episodes: %8.4f"%(episode,avg_reward))
         
