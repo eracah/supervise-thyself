@@ -39,7 +39,17 @@ import sys
 from torch.utils.data import TensorDataset
 
 
-# In[14]:
+# In[3]:
+
+
+def classification_acc(y_logits,y_true):
+    y_guess = torch.argmax(y_logits,dim=1)
+    acc = (float(torch.sum(torch.eq(y_true,y_guess)).data) / y_true.size(0))*100
+    return acc
+
+
+# In[4]:
+
 
 
 def convert_frame(obs, resize_to=(84,84),to_tensor=False):
@@ -66,28 +76,35 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
         
 
 
-# In[12]:
+# In[5]:
 
 
-def collect_one_data_point(env, policy, convert_fxn):
+def collect_one_data_point(env, policy, convert_fxn, get_agent_pos=False):
     x0 = env.render("rgb_array")
     action = policy(convert_fxn(x0,to_tensor=True))
     x0 = convert_fxn(x0,to_tensor=False)
+    if get_agent_pos:
+        x0_coords = env.agent_pos
     _, reward, done, _ = env.step(action)
     x1 = convert_fxn(env.render("rgb_array"))
-    return x0,x1,action,reward,done
+    transition =  [x0,x1,action,reward,done]
+    if get_agent_pos:
+        x1_coords = env.agent_pos
+        transition.extend([x0_coords, x1_coords])
+    return transition
 
 def rollout_iterator(env=gym.make("MiniGrid-Empty-6x6-v0"),
                      policy=lambda x0: np.random.choice(3),
-                     convert_fxn=convert_frame):
+                     convert_fxn=convert_frame, get_agent_pos=False):
     _ = env.reset()
     done = False
     while not done:
-        x0,x1,a,reward, done = collect_one_data_point(env, policy, convert_fxn)
-        yield x0,x1,a,reward, done
+        transition = collect_one_data_point(env, policy, convert_fxn,
+                                                      get_agent_pos=get_agent_pos)
+        yield transition
 
 
-# In[5]:
+# In[6]:
 
 
 def mkstr(key,args={}):
@@ -95,7 +112,7 @@ def mkstr(key,args={}):
     return "=".join([key,str(d[key])])
 
 
-# In[6]:
+# In[7]:
 
 
 def initialize_weights(self):
@@ -110,7 +127,7 @@ def initialize_weights(self):
             m.bias.data.zero_()
 
 
-# In[7]:
+# In[8]:
 
 
 def write_ims(index,rows,ims,name, iter_):
@@ -120,7 +137,7 @@ def write_ims(index,rows,ims,name, iter_):
     
 
 
-# In[8]:
+# In[9]:
 
 
 def write_to_config_file(dict_,log_dir):
@@ -131,7 +148,7 @@ def write_to_config_file(dict_,log_dir):
     
 
 
-# In[9]:
+# In[10]:
 
 
 def save_incorrect_examples(y,action_guess,x0,x1,iter_):
@@ -170,7 +187,7 @@ def plot_test(x0s,x1s,ys,rs, label_list):
     plt.show()
 
 
-# In[ ]:
+# In[12]:
 
 
 def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):

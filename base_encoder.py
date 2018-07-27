@@ -27,7 +27,7 @@ from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
 
 
-# In[9]:
+# In[2]:
 
 
 class Encoder(nn.Module):
@@ -82,16 +82,16 @@ class Encoder(nn.Module):
         return embedding
 
 
-# In[22]:
+# In[3]:
 
 
-if __name__ == "__main__":
-    x = torch.randn((10,3,64,64))
-    x0 = x[0][None,:]
-    enc = Encoder(embed_len=32)
-    q = QNet(enc)
-    print(q(x0))
-    print(list(dict(q.named_parameters()).keys()))
+# if __name__ == "__main__":
+#     x = torch.randn((10,3,64,64))
+#     x0 = x[0][None,:]
+#     enc = Encoder(embed_len=32)
+#     q = QNet(enc)
+#     print(q(x0))
+#     print(list(dict(q.named_parameters()).keys()))
     
 
 

@@ -29,8 +29,9 @@ from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
 from base_encoder import Encoder
 from dqn import get_q_loss, QNet, qpolicy
-from inverse_model import InverseModel, get_im_loss_acc
-from utils import mkstr, initialize_weights, write_ims,                write_to_config_file,collect_one_data_point,                convert_frame, convert_frames, do_k_episodes
+from inverse_model import InverseModel
+from utils import mkstr, initialize_weights, write_ims,                write_to_config_file,                collect_one_data_point,                convert_frame, convert_frames,                do_k_episodes, classification_acc, rollout_iterator
+from position_predictor import PosPredictor
 
 
 # In[2]:
@@ -60,7 +61,7 @@ def setup_args():
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--gamma", type=float,default=0.99)
     parser.add_argument("--action_strings",type=str, nargs='+', default=["forward", "left", "right"])
-    parser.add_argument("--with_aux",action="store_true")
+    parser.add_argument("--no_aux",action="store_true")
     parser.add_argument("--C",type=int,default=10000)
     parser.add_argument("--final_exploration_frame",type=int,default=1000000)
     parser.add_argument("--update_frequency",type=int,default=4)
@@ -90,15 +91,17 @@ def setup_dirs_logs(args):
 
     return writer
 
-def setup_replay_buffer(init_buffer_size):
+def setup_replay_buffer(init_buffer_size, with_agent_pos=False):
     print("setting up buffer")
-    replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size)
+    replay_buffer = ReplayMemory(capacity=args.buffer_size,batch_size=args.batch_size,
+                                 with_agent_pos=with_agent_pos)
     fill_replay_buffer(buffer=replay_buffer,
                        size=init_buffer_size,
                        rollout_size=256,
                        env = env,
                        resize_to = args.resize_to,
                        policy= lambda x0: np.random.choice(action_space),
+                       with_agent_pos=with_agent_pos
                       )
     print("buffer filled!")
     return replay_buffer
@@ -109,18 +112,10 @@ def setup_models():
                       h_ch=args.width,
                       embed_len=args.embed_len,
                       batch_norm=args.batch_norm).to(DEVICE)
-    
-    q_net = QNet(encoder=encoder,
-                 num_actions=num_actions).to(DEVICE)
-    q_net.apply(initialize_weights)
-    target_q_net = QNet(encoder=encoder,
-                 num_actions=num_actions).to(DEVICE)
-    target_q_net.load_state_dict(q_net.state_dict())
-    
 
     inv_model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
     inv_model.apply(initialize_weights)
-    return encoder,q_net, target_q_net, inv_model
+    return encoder,inv_model #,  q_net, target_q_net, 
     
 
 def setup_env():
@@ -134,90 +129,106 @@ def setup_env():
     
 
 
-# In[4]:
+# In[3]:
 
 
+def ss_train():
+    im_losses, im_accs = [], []
+    done = False
+    state = env.reset()
+    while not done:
+        im_opt.zero_grad()
+        policy = lambda x0: np.random.choice(action_space)
+        x0,x1,a,r, done = collect_one_data_point(convert_fxn=convert_fxn,
+                                                      env=env,
+                                                      policy=policy)
+
+        replay_buffer.push(x0,x1,a,r, done)
+        x0s,x1s,a_s,rs,dones = replay_buffer.sample(args.batch_size)
+        a_pred = inv_model(x0s,x1s)
+        im_loss = nn.CrossEntropyLoss()(a_pred,a_s)
+        im_losses.append(float(im_loss.data))
+
+        acc = classification_acc(a_pred,y_true=a_s)
+        im_accs.append(acc)
+
+        im_loss.backward()
+        im_opt.step()
+    im_loss, im_acc = np.mean(im_losses), np.mean(im_accs)
+    print("\tIM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
+
+  
+
+
+# In[10]:
+
+
+def disentang_eval():    
+    x_dim, y_dim = (env.grid_size, env.grid_size)
+    pp=PosPredictor((x_dim,y_dim),embed_len=args.embed_len).cuda()
+    opt = Adam(lr=0.1,params=pp.parameters())
+    num_val_batches = 10
+    for i in range(num_val_batches):
+        pp.zero_grad()
+        batch = replay_buffer.sample(args.batch_size)
+
+        x0s,x1s,a_s,rs,dones,x0_c, x1_c = batch
+
+        x0s.size()
+
+        e0s = encoder(x0s).detach()
+
+        x_g,y_g = pp(e0s)
+
+        x_t, y_t = x0_c[:,0],x0_c[:,1]
+
+        loss = nn.CrossEntropyLoss()(x_g,x_t) + nn.CrossEntropyLoss()(y_g,y_t)
+        x_acc = classification_acc(y_logits=x_g,y_true=x_t)
+        y_acc = classification_acc(y_logits=y_g,y_true=y_t)
+        print(float(loss.data),x_acc,y_acc)
+        loss.backward()
+        opt.step()
+
+
+# In[11]:
+
+
+#train
 if __name__ == "__main__":
+    with_agent_pos = True
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    epsilon = 1
     args = setup_args()
-    args.reward_clip = True
-    args.with_aux = False
     writer = setup_dirs_logs(args)
     env, action_space, num_actions = setup_env()
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
-    replay_buffer = setup_replay_buffer(args.init_buffer_size)
+    replay_buffer = setup_replay_buffer(args.init_buffer_size, with_agent_pos=with_agent_pos)
+    encoder, inv_model = setup_models()
     
-    encoder,    q_net,    target_q_net,    inv_model = setup_models()
-    
-
-    im_criterion, q_criterion  = nn.CrossEntropyLoss(), nn.MSELoss()
     
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
-    qopt = Adam(lr=args.lr,params=q_net.parameters())
-    #qopt = RMSprop(lr=args.lr,params=q_net.parameters())
     global_steps = 0
+
+
+# In[13]:
+
+
+if __name__ == "__main__":
+    disentang_eval()
+
+
+# In[12]:
+
+
+if __name__ == "__main__":
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
-        done = False
-        state = env.reset()
-        im_losses = []
-        im_accs = []
-        qlosses = []
-        while not done:
-            if global_steps % args.C == 0:
-                target_q_net.load_state_dict(q_net.state_dict())
-            im_opt.zero_grad()
-            qopt.zero_grad()
-            
-            policy = partial(qpolicy,q_net=q_net,epsilon=epsilon)
-            calc_q_loss = partial(get_q_loss,gamma=args.gamma,
-                                  q_net=q_net,
-                                  target_q_net=target_q_net)
-            #uint8 single frame
-            x0,x1,a,r, done = collect_one_data_point(convert_fxn=convert_fxn,
-                                                          env=env,
-                                                          policy=policy)
-            if args.reward_clip:
-                r = np.clip(r, -1, 1)
-            replay_buffer.push(state=x0,next_state=x1,action=a,reward=r,done=done)
-            
-            #batch of pytorch cuda float tensors 
-            x0s,x1s,a_s,rs,dones = replay_buffer.sample(args.batch_size)
-
-
-            
-            qloss = calc_q_loss(x0s,x1s,a_s,rs,dones)
-            qloss.backward()
-            if args.with_aux:
-                im_loss, acc = get_im_loss_acc(x0s,x1s,a_s)
-                im_accs.append(acc)
-                im_losses.append(float(im_loss.data))
-                im_loss.backward()
-                im_opt.step()
-            if global_steps % args.update_frequency == 0:
-                qopt.step()
-            qlosses.append(float(qloss.data))
-            global_steps += 1
-            if global_steps < args.final_exploration_frame:
-                epsilon -= (0.9 / args.final_exploration_frame )
-            else:
-                epsilon = 0.1
-
-        qloss = np.mean(qlosses)
-        writer.add_scalar("episode_loss",qloss,global_step=episode)
-        #writer.add_scalar("episode_acc",acc,global_step=episode)
-        print("\tEpisode QLoss: %8.4f"%(qloss)) 
-        if args.with_aux:
-            imloss, im_acc = np.mean(im_losses), np.mean(im_accs)
-            print("IM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
-            
-        if episode % 5 == 0:
-            avg_reward, rewards = do_k_episodes(k=args.num_eval_eps,epsilon=0.0,convert_fxn=convert_fxn,
-                                                env=env,policy=policy)
-            writer.add_scalar("avg_episode_reward",avg_reward,global_step=episode)
-            print("\tAverage Episode Reward for Qnet after %i Episodes: %8.4f"%(episode,avg_reward))
+        ss_train()
         
-    
-    
+        global_steps += 1
+
+
+# In[9]:
+
+
+
 
