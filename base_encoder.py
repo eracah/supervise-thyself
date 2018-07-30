@@ -82,6 +82,35 @@ class Encoder(nn.Module):
         return embedding
 
 
+# In[7]:
+
+
+class RawPixelsEncoder(nn.Module):
+    def __init__(self, im_wh=(64,64),in_ch=3):
+        super(RawPixelsEncoder,self).__init__()
+        self.embed_len = np.prod(im_wh) * in_ch
+    def forward(self,x):
+        return x.view(x.size(0),-1)
+
+
+# In[ ]:
+
+
+# class RandomLinearProjection(nn.Module):
+#     def __init__(self,)
+
+
+# In[6]:
+
+
+# if __name__ == "__main__":
+#     rpe = RawPixelsEncoder()
+#     x = torch.randn((10,3,64,64))
+#     f = rpe(x)
+#     print(f.size())
+    
+
+
 # In[3]:
 
 

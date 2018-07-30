@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
-from base_encoder import Encoder
+from base_encoder import Encoder, RawPixelsEncoder
 from dqn import get_q_loss, QNet, qpolicy
 from inverse_model import InverseModel
 from utils import mkstr, initialize_weights, write_ims,                write_to_config_file,                collect_one_data_point,                convert_frame, convert_frames,                do_k_episodes, classification_acc, rollout_iterator
@@ -47,7 +47,7 @@ def setup_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
+    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-16x16-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
     parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
@@ -68,6 +68,7 @@ def setup_args():
     parser.add_argument("--noop_max",type=int,default=30)
     parser.add_argument("--reward_clip",action="store_true")
     parser.add_argument("--num_eval_eps",type=int,default=25)
+    parser.add_argument("--num_val_batches", type=int, default=100)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -114,8 +115,8 @@ def setup_models():
                       batch_norm=args.batch_norm).to(DEVICE)
 
     inv_model = InverseModel(encoder=encoder,num_actions=num_actions).to(DEVICE)
-    inv_model.apply(initialize_weights)
-    return encoder,inv_model #,  q_net, target_q_net, 
+    raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to)
+    return encoder,inv_model, raw_pixel_enc #,  q_net, target_q_net, 
     
 
 def setup_env():
@@ -137,14 +138,17 @@ def ss_train():
     done = False
     state = env.reset()
     while not done:
+        
         im_opt.zero_grad()
         policy = lambda x0: np.random.choice(action_space)
-        x0,x1,a,r, done = collect_one_data_point(convert_fxn=convert_fxn,
+        x0,x1,action,reward,done,x0_coord,x1_coord = collect_one_data_point(convert_fxn=convert_fxn,
                                                       env=env,
-                                                      policy=policy)
+                                                      policy=policy,
+                                                      get_agent_pos=with_agent_pos)
 
-        replay_buffer.push(x0,x1,a,r, done)
-        x0s,x1s,a_s,rs,dones = replay_buffer.sample(args.batch_size)
+
+        replay_buffer.push(x0,x1,action,reward,done,x0_coord,x1_coord)
+        x0s,x1s,a_s,rs,dones, x0_coords, x1_coords = replay_buffer.sample(args.batch_size)
         a_pred = inv_model(x0s,x1s)
         im_loss = nn.CrossEntropyLoss()(a_pred,a_s)
         im_losses.append(float(im_loss.data))
@@ -155,42 +159,64 @@ def ss_train():
         im_loss.backward()
         im_opt.step()
     im_loss, im_acc = np.mean(im_losses), np.mean(im_accs)
+    writer.add_scalar("train/loss",im_loss,global_step=episode)
+    writer.add_scalar("train/acc",im_acc,global_step=episode)
     print("\tIM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
 
   
 
 
-# In[10]:
+# In[4]:
 
 
-def disentang_eval():    
+def disentang_eval(encoder):    
     x_dim, y_dim = (env.grid_size, env.grid_size)
-    pp=PosPredictor((x_dim,y_dim),embed_len=args.embed_len).cuda()
-    opt = Adam(lr=0.1,params=pp.parameters())
-    num_val_batches = 10
-    for i in range(num_val_batches):
-        pp.zero_grad()
+    pos_pred = PosPredictor((x_dim,y_dim),embed_len=encoder.embed_len).to(DEVICE)
+    opt = Adam(lr=0.1,params=pos_pred.parameters())
+    #print("beginning eval...")
+    x_accs = []
+    y_accs = []
+    for i in range(args.num_val_batches):
+        pos_pred.zero_grad()
+        
+        
         batch = replay_buffer.sample(args.batch_size)
-
         x0s,x1s,a_s,rs,dones,x0_c, x1_c = batch
 
-        x0s.size()
 
-        e0s = encoder(x0s).detach()
+        x_pred,y_pred = pos_pred(encoder(x0s).detach())
 
-        x_g,y_g = pp(e0s)
+        x_true, y_true = x0_c[:,0],x0_c[:,1]
 
-        x_t, y_t = x0_c[:,0],x0_c[:,1]
-
-        loss = nn.CrossEntropyLoss()(x_g,x_t) + nn.CrossEntropyLoss()(y_g,y_t)
-        x_acc = classification_acc(y_logits=x_g,y_true=x_t)
-        y_acc = classification_acc(y_logits=y_g,y_true=y_t)
-        print(float(loss.data),x_acc,y_acc)
+        loss = nn.CrossEntropyLoss()(x_pred,x_true) + nn.CrossEntropyLoss()(y_pred,y_true)
+        
+        
+        #writer.add_scalar("eval/pos_pred_loss",loss,global_step=i)
+        x_accs.append(classification_acc(y_logits=x_pred,y_true=x_true))
+        y_accs.append(classification_acc(y_logits=y_pred,y_true=y_true))
+        
         loss.backward()
         opt.step()
+    x_acc, y_acc = np.mean(x_accs), np.mean(y_accs)
+    return x_acc,y_acc
 
 
-# In[11]:
+# In[ ]:
+
+
+def disentang_evals(encoder_dict):
+    eval_dict_x = {}
+    eval_dict_y = {}
+    for name,encoder in encoder_dict.items():
+        x_acc, y_acc = disentang_eval(encoder)
+        eval_dict_x[name] = x_acc
+        eval_dict_y[name] = y_acc
+        print("\t%s Position Prediction: \n\t\t x-acc: %9.3f%% \n\t\t y-acc: %9.3f%%"%(name, x_acc, y_acc))
+    writer.add_scalars("eval/x_pos_inf_acc",eval_dict_x, global_step=episode)
+    writer.add_scalars("eval/y_pos_inf_acc",eval_dict_y, global_step=episode)
+
+
+# In[ ]:
 
 
 #train
@@ -202,33 +228,16 @@ if __name__ == "__main__":
     env, action_space, num_actions = setup_env()
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     replay_buffer = setup_replay_buffer(args.init_buffer_size, with_agent_pos=with_agent_pos)
-    encoder, inv_model = setup_models()
+    encoder, inv_model, raw_pixel_enc = setup_models()
     
     
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
     global_steps = 0
-
-
-# In[13]:
-
-
-if __name__ == "__main__":
-    disentang_eval()
-
-
-# In[12]:
-
-
-if __name__ == "__main__":
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
         ss_train()
+        if episode % 10 == 0:
+            disentang_evals({"inv_model":encoder, "raw_pixel_enc":raw_pixel_enc})
         
         global_steps += 1
-
-
-# In[9]:
-
-
-
 
