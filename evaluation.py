@@ -1,15 +1,16 @@
 
 # coding: utf-8
 
-# In[22]:
+# In[1]:
 
 
 import torch
 from torch import nn
 import torch.functional as F
+import numpy as np
 
 
-# In[138]:
+# In[2]:
 
 
 class PosPredictor(nn.Module):
@@ -26,10 +27,49 @@ class PosPredictor(nn.Module):
         x_logits = self.fcx(embeddings)
         y_logits = self.fcy(embeddings)
         return x_logits, y_logits
+
+
+# In[56]:
+
+
+class Decoder(nn.Module):
+    def __init__(self,im_wh=(84,84),in_ch=3, embed_len=32, h_ch=32):
+        super(Decoder, self).__init__()
+        #self.fc = nn.Linear(in_features=embed_len, 
+         #                     out_features= np.prod(im_wh / 2**num_layers))
+        
+        
+        self.upsampling = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=embed_len,out_channels=h_ch,kernel_size=7,stride=1),
+            # nn.BatchNorm2d(h_ch*8),
+            nn.ReLU(),
+            nn.ConvTranspose2d(in_channels=embed_len,out_channels=h_ch,kernel_size=5,stride=3, padding=1),
+            # nn.BatchNorm2d(h_ch*8),
+            nn.ReLU(),
+            nn.ConvTranspose2d(in_channels=h_ch,out_channels=h_ch,kernel_size=4,stride=2,padding=1),
+            # nn.BatchNorm2d(h_ch*4),
+            nn.ReLU(),
+#             nn.ConvTranspose2d(in_channels=h_ch,out_channels=h_ch,kernel_size=4,stride=2,padding=1),
+#             # nn.BatchNorm2d(h_ch*2),
+#             nn.ReLU(),
+#             nn.ConvTranspose2d(in_channels=h_ch,out_channels=h_ch,kernel_size=4,stride=2,padding=1),
+#             # nn.BatchNorm2d(h_ch),
+#             nn.ReLU(),
+            nn.ConvTranspose2d(in_channels=h_ch,out_channels=in_ch,kernel_size=4,stride=2,padding=1),
+            nn.Tanh()
+        )
+        
+        
+    def forward(self,x):
+        #print(self)
+        x = x[:,:,None,None]
+        return self.upsampling(x)
+        
+        
         
 
 
-# In[136]:
+# In[ ]:
 
 
 # if __name__ == "__main__":

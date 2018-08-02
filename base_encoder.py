@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[9]:
 
 
 import gym
@@ -27,7 +27,7 @@ from functools import partial
 from replay_buffer import ReplayMemory, fill_replay_buffer
 
 
-# In[2]:
+# In[10]:
 
 
 class Encoder(nn.Module):
@@ -82,7 +82,7 @@ class Encoder(nn.Module):
         return embedding
 
 
-# In[7]:
+# In[11]:
 
 
 class RawPixelsEncoder(nn.Module):
@@ -93,11 +93,32 @@ class RawPixelsEncoder(nn.Module):
         return x.view(x.size(0),-1)
 
 
-# In[ ]:
+# In[12]:
 
 
-# class RandomLinearProjection(nn.Module):
-#     def __init__(self,)
+class RandomLinearProjection(nn.Module):
+    def __init__(self,im_wh=(64,64),in_ch=3, embed_len=32 ):
+        super(RandomLinearProjection,self).__init__()
+        self.embed_len = embed_len
+        self.input_len = np.prod(im_wh) * in_ch
+        self.fc = nn.Linear(in_features=self.input_len,out_features=self.embed_len)
+    def forward(self,x):
+        vec = x.view(x.size(0),-1)
+        return self.fc(vec)
+        
+
+
+# In[13]:
+
+
+class RandomWeightCNN(Encoder):
+    def __init__(im_wh=(64,64),in_ch=3,
+                 h_ch=32,embed_len=32, 
+                 batch_norm=False):
+        super(RandomWeightCNN,self).__init__(im_wh=im_wh,in_ch=in_ch,
+                 h_ch=h_ch,embed_len=embed_len, 
+                 batch_norm=batch_norm)
+        
 
 
 # In[6]:
