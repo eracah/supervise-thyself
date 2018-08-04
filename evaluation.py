@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 import torch
@@ -10,7 +10,7 @@ import torch.functional as F
 import numpy as np
 
 
-# In[2]:
+# In[3]:
 
 
 class PosPredictor(nn.Module):
@@ -27,6 +27,22 @@ class PosPredictor(nn.Module):
         x_logits = self.fcx(embeddings)
         y_logits = self.fcy(embeddings)
         return x_logits, y_logits
+
+
+# In[4]:
+
+
+class HeadingPredictor(nn.Module):
+    """Predict the heading angle of the agent given an embedding"""
+    def __init__(self,num_directions, embed_len):
+        super(HeadingPredictor,self).__init__()
+        self.fc = nn.Linear(in_features=embed_len, out_features=num_directions)
+    def forward(self, embeddings):
+        #make sure embedding is detached
+#         if embeddings.requires_grad:
+#             embeddings = embeddings.detach()
+        logits = self.fc(embeddings)
+        return logits
 
 
 # In[56]:

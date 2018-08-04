@@ -31,7 +31,7 @@ from base_encoder import Encoder, RawPixelsEncoder,RandomLinearProjection,Random
 from dqn import get_q_loss, QNet, qpolicy
 from inverse_model import InverseModel
 from utils import mkstr, initialize_weights, write_ims,                write_to_config_file,                collect_one_data_point,                convert_frame, convert_frames,                do_k_episodes, classification_acc, rollout_iterator
-from evaluation import PosPredictor, Decoder
+from evaluation import PosPredictor, Decoder, Headi
 
 
 # In[2]:
@@ -59,6 +59,7 @@ def setup_args():
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--action_strings",type=str, nargs='+', default=["forward", "left", "right"])
     parser.add_argument("--num_val_batches", type=int, default=100)
+    parser.add_argument("--decoder_batches", type=int, default=1000)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -157,6 +158,7 @@ def ss_train():
     writer.add_scalar("train/loss",im_loss,global_step=episode)
     writer.add_scalar("train/acc",im_acc,global_step=episode)
     print("\tIM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
+    return im_acc
 
   
 
@@ -179,12 +181,12 @@ def eval_iter(encoder, num_batches, batch_size=None):
 # In[5]:
 
 
-def train_decoder(encoder, encoder_name):
+def train_decoder(encoder, encoder_name, num_decoder_batches):
     decoder = Decoder(in_ch=3,
                       im_wh=args.resize_to,
                       h_ch=args.width,
                       embed_len=args.embed_len).to(DEVICE)
-    num_decoder_batches = 1000
+    #num_decoder_batches = 10000
     criterion = nn.MSELoss()
     opt = Adam(lr=0.1,params=decoder.parameters())
     for i , (x0s,x1s,f0, f1, a_s, x0_c, x1_c) in enumerate(eval_iter(encoder,num_decoder_batches)):
@@ -211,7 +213,108 @@ def train_decoder(encoder, encoder_name):
 # In[6]:
 
 
-def disentang_eval(encoder):    
+def traverse_latent_space(decoder,encoder, name):
+
+    num_dims_to_try = args.embed_len
+
+    num_perturbs = 12
+
+
+    iterator = eval_iter(encoder,1,batch_size=args.embed_len)
+    x,_,z, _, _, _, _ = next(iterator)
+    max_perturb = 5 * float(torch.std(z))
+
+
+    pzs = []
+    for dim in enumerate(range(args.embed_len)):
+
+        dim =0 
+        z = z[dim].expand(num_perturbs,-1)
+
+
+        p_mat = torch.zeros_like(z)
+        p_vec = torch.linspace(-max_perturb/2,max_perturb/2,num_perturbs)
+
+
+        p_mat[:,dim] = p_vec
+        pz = z + p_mat
+        pzs.append(pz)
+    all_pzs = torch.cat(pzs).to(DEVICE)
+
+    def plot_gen_z(decoder, zs, cols, encoder_name):
+        x_fake = decoder(zs)
+        x_grid = make_grid(x_fake,cols)#.numpy().transpose(1,2,0)
+        writer.add_image("traverse_latent/name",x_grid,global_step=1)
+
+
+    plot_gen_z(decoder,all_pzs,num_dims_to_try,name)
+
+
+# In[7]:
+
+
+def qual_evals(encoder_dict):
+    decoder_dict = {}
+    for name,encoder in encoder_dict.items():
+        #if "raw" not in name:
+        if "inv_model" in name:
+            decoder = train_decoder(encoder, name, args.decoder_batches)
+            decoder_dict[name] = decoder
+            traverse_latent_space(decoder,encoder,name)
+        else:
+            pass
+    
+            #TODO make generalized decoder that just reshapes flattened pixels
+
+
+# In[8]:
+
+
+def interpolate_latent_space():
+    z0 = torch.randn(1, Z_DIM, 1, 1).cuda()
+
+    z1 = torch.randn(1, Z_DIM, 1, 1).cuda()
+
+    zs = []
+    for alpha in np.linspace(0,1,11):
+        z = alpha*z0 + (1-alpha)*z1
+        zs.append(z)
+    zs = Variable(torch.cat(zs)).cuda()
+    plot_gen_z(zs,11)
+
+
+# In[9]:
+
+
+def interpolate_image_space():
+    x0 = (lsgan_netG(Variable(z0)).cpu().data + 1) /2
+
+    x1 = (lsgan_netG(Variable(z1)).cpu().data + 1)/2
+
+    xs = []
+    for alpha in np.linspace(0,1,11):
+        x = alpha*x0 + (1-alpha)*x1
+        xs.append(x)
+
+    xs = torch.cat(xs)
+
+    x_grid = make_grid(xs,11)
+
+    x_grid = x_grid.numpy().transpose(1,2,0)
+    
+    plt.clf()
+    plt.figure(figsize=[30,30])
+    plt.imshow(x_grid)
+    plt.axis("off")
+    plt.title("Interpolating in Image Space",fontdict={"size":40})
+    plt.show()
+    
+
+
+# In[10]:
+
+
+def quant_eval(encoder):    
     x_dim, y_dim = (env.grid_size, env.grid_size)
     pos_pred = PosPredictor((x_dim,y_dim),embed_len=encoder.embed_len).to(DEVICE)
     opt = Adam(lr=0.1,params=pos_pred.parameters())
@@ -232,30 +335,21 @@ def disentang_eval(encoder):
     x_acc, y_acc = np.mean(x_accs), np.mean(y_accs)
     return x_acc,y_acc
 
-
-# In[ ]:
-
-
-def disentang_evals(encoder_dict):
+def quant_evals(encoder_dict):
     eval_dict_x = {}
     eval_dict_y = {}
     decoder_dict = {}
     for name,encoder in encoder_dict.items():
-        x_acc, y_acc = disentang_eval(encoder)
+        x_acc, y_acc = quant_eval(encoder)
         eval_dict_x[name] = x_acc
         eval_dict_y[name] = y_acc
         print("\t%s Position Prediction: \n\t\t x-acc: %9.3f%% \n\t\t y-acc: %9.3f%%"%(name, x_acc, y_acc))
-        if "raw" not in name:
-            print(name)
-            decoder = train_decoder(encoder, name)
-            decoder_dict[name] = decoder
-#         else:
-#             TODO make generalized decoder that just reshapes flattened pixels
+        
     writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict_x, global_step=episode)
     writer.add_scalars("eval/quant/y_pos_inf_acc",eval_dict_y, global_step=episode)
 
 
-# In[ ]:
+# In[11]:
 
 
 #train
@@ -268,18 +362,21 @@ if __name__ == "__main__":
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     replay_buffer = setup_replay_buffer(args.init_buffer_size, with_agent_pos=with_agent_pos)
     encoder, inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
-    
+    enc_dict = {"inv_model":encoder, 
+                     "raw_pixel_enc":raw_pixel_enc, 
+                     "rand_proj": rand_lin_proj, 
+                     "rand_cnn":rand_cnn}
     
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
     global_steps = 0
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
-        ss_train()
-        if episode % 5 == 0:
-            disentang_evals({"inv_model":encoder, 
-                             "raw_pixel_enc":raw_pixel_enc, 
-                             "rand_proj": rand_lin_proj, 
-                             "rand_cnn":rand_cnn})
-        
+        acc = ss_train()
+        if acc > 99:
+            break
+        quant_evals({"inv_model":encoder})
         global_steps += 1
+    quant_evals(enc_dict)
+    qual_evals(enc_dict)
+        
 
