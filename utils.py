@@ -1,45 +1,59 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[17]:
 
 
 import sys
-import copy
 from torch import nn
 import torch
 from torchvision.utils import make_grid
 import numpy as np
-import time
 import json
-from pathlib import Path
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 from matplotlib import pyplot as plt
-#%matplotlib inline
-
 from gym_minigrid.wrappers import *
 from PIL import Image
 from torchvision.transforms import Compose,Normalize,Resize,ToTensor, Grayscale
-from torch.utils.data import DataLoader, Dataset
-from torchvision.datasets import ImageFolder
 import numpy as np
-import time
-import torch
 from copy import deepcopy
-
-from pathlib import Path
-import time
-import argparse
-import sys
 from functools import partial
 import math
-import sys
-from torch.utils.data import TensorDataset
+from pathlib import Path
+from collections import namedtuple
 
 
-# In[3]:
+# In[28]:
+
+
+def discretize_heading(heading):
+    """takes 2D unit vector of heading and bins it to 4 directions right,down,left,up
+       0: right
+       1: down
+       2: left
+       3: up """
+    
+    minigrid_headings = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
+    direction = minigrid_headings.index(list(heading))
+    return direction
+
+
+# In[19]:
+
+
+def setup_env(env_name):
+    env = gym.make(env_name)
+    if "MiniGrid" in env_name:
+        action_space = range(3)
+    else:
+        action_space = list(range(env.action_space.n))
+    num_actions = len(action_space)
+    return env, action_space
+
+
+# In[20]:
 
 
 def classification_acc(y_logits,y_true):
@@ -48,7 +62,7 @@ def classification_acc(y_logits,y_true):
     return acc
 
 
-# In[4]:
+# In[21]:
 
 
 
@@ -76,35 +90,67 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
         
 
 
-# In[5]:
+# In[24]:
 
 
-def collect_one_data_point(env, policy, convert_fxn, get_agent_pos=False):
+def get_trans_tuple(with_agent_pos=False, with_agent_heading=False):
+        tuple_fields = ['x0','x1','a', 'r', 'done']
+        
+        if with_agent_pos:
+            tuple_fields.extend(["x0_coords","x1_coords"])
+        if with_agent_heading:
+            tuple_fields.extend(["x0_heading","x1_heading"])
+        
+        Transition = namedtuple("Transition",tuple(tuple_fields))
+        return Transition
+        
+
+
+# In[26]:
+
+
+def collect_one_data_point(env=gym.make("MiniGrid-Empty-6x6-v0"),
+                     policy=lambda x0: np.random.choice(3),
+                     convert_fxn=convert_frame,**kwargs):
     x0 = env.render("rgb_array")
     action = policy(convert_fxn(x0,to_tensor=True))
     x0 = convert_fxn(x0,to_tensor=False)
-    if get_agent_pos:
+    
+    with_agent_pos = kwargs["with_agent_pos"] if "with_agent_pos" in kwargs else False
+    with_agent_heading = kwargs["with_agent_heading"] if "with_agent_heading" in kwargs else False
+    
+    Transition = get_trans_tuple(with_agent_pos, with_agent_heading)
+    
+    if with_agent_pos:
         x0_coords = env.agent_pos
+    if with_agent_heading:
+        x0_heading = discretize_heading(env.get_dir_vec())
+    
+    
     _, reward, done, _ = env.step(action)
     x1 = convert_fxn(env.render("rgb_array"))
-    transition =  [x0,x1,action,reward,done]
-    if get_agent_pos:
+    trans_list =  [x0,x1,action,reward,done]
+    
+    if with_agent_pos:
         x1_coords = env.agent_pos
-        transition.extend([x0_coords, x1_coords])
-    return transition
+        trans_list.extend([x0_coords, x1_coords])
+    if with_agent_heading:
+        x1_heading = discretize_heading(env.get_dir_vec())
+        trans_list.extend([x0_heading, x1_heading])
+    return Transition(*trans_list)
 
 def rollout_iterator(env=gym.make("MiniGrid-Empty-6x6-v0"),
                      policy=lambda x0: np.random.choice(3),
-                     convert_fxn=convert_frame, get_agent_pos=False):
+                     convert_fxn=convert_frame, **kwargs):
     _ = env.reset()
     done = False
     while not done:
         transition = collect_one_data_point(env, policy, convert_fxn,
-                                                      get_agent_pos=get_agent_pos)
+                                                      **kwargs)
         yield transition
 
 
-# In[6]:
+# In[34]:
 
 
 def mkstr(key,args={}):
@@ -112,7 +158,7 @@ def mkstr(key,args={}):
     return "=".join([key,str(d[key])])
 
 
-# In[7]:
+# In[35]:
 
 
 def initialize_weights(self):
@@ -127,7 +173,7 @@ def initialize_weights(self):
             m.bias.data.zero_()
 
 
-# In[8]:
+# In[36]:
 
 
 def write_ims(index,rows,ims,name, iter_):
@@ -137,7 +183,7 @@ def write_ims(index,rows,ims,name, iter_):
     
 
 
-# In[9]:
+# In[37]:
 
 
 def write_to_config_file(dict_,log_dir):
@@ -148,7 +194,7 @@ def write_to_config_file(dict_,log_dir):
     
 
 
-# In[10]:
+# In[38]:
 
 
 def save_incorrect_examples(y,action_guess,x0,x1,iter_):
@@ -165,7 +211,7 @@ def save_incorrect_examples(y,action_guess,x0,x1,iter_):
             print("Num wrong and right: ",num_wrong,num_right)
 
 
-# In[11]:
+# In[39]:
 
 
 def plot_test(x0s,x1s,ys,rs, label_list):
@@ -187,7 +233,7 @@ def plot_test(x0s,x1s,ys,rs, label_list):
     plt.show()
 
 
-# In[12]:
+# In[40]:
 
 
 def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
@@ -204,4 +250,23 @@ def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
                 cum_reward += float(reward)
             rewards.append(cum_reward)
         return np.mean(rewards), rewards
+
+
+# In[ ]:
+
+
+#directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
+
+# ind_to_str = dict(zip(range(4),["right","down","left","up"]))
+
+# env = gym.make("MiniGrid-Empty-6x6-v0")
+
+# _=env.reset()
+# #print(env.get_dir_vec())
+# for i in range(4):
+#     direc = list(env.get_dir_vec())
+#     direc_label = dirs.index(direc)
+#     print(direc,direc_label, ind_to_str[direc_label])
+#     _ = env.step(0)
+
 
