@@ -22,7 +22,8 @@ import time
 import json
 from functools import partial
 from replay_buffer import setup_replay_buffer
-from base_encoder import Encoder, RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
+from base_encoder import Encoder
+from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 #from dqn import get_q_loss, QNet, qpolicy
 from inverse_model import InverseModel
 from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, convert_frame, classification_acc
@@ -195,11 +196,13 @@ def quant_eval(encoder):
     x_acc, y_acc, h_acc = np.mean(x_accs), np.mean(y_accs), np.mean(h_accs)
     return x_acc,y_acc, h_acc
 
+
+# In[6]:
+
+
 def quant_evals(encoder_dict):
-    eval_dict_x = {}
-    eval_dict_y = {}
-    eval_dict_h = {}
-    decoder_dict = {}
+    strs = ["x","y","h"]
+    eval_dict = {k:{"avg_acc":{}, "std":{}, "std_err":{}} for k in strs}
     for name,encoder in encoder_dict.items():
         x_accs,y_accs,h_accs = [], [], []
         for i in range(args.eval_trials):
@@ -208,26 +211,33 @@ def quant_evals(encoder_dict):
             y_accs.append(y_acc)
             h_accs.append(h_acc)
         
-        eval_dict_x[name] = np.mean(x_accs)
-        #eval_dict_x[name]["std"] = np.std(x_accs)
+        eval_dict["x"]["avg_acc"][name] = np.mean(x_accs)
+        eval_dict["y"]["avg_acc"][name] = np.mean(y_accs)
+        eval_dict["h"]["avg_acc"][name] = np.mean(h_accs)
+        eval_dict["x"]["std"][name] = np.std(x_accs)
+        eval_dict["y"]["std"][name] = np.std(y_accs)
+        eval_dict["h"]["std"][name] = np.std(h_accs)
+        for s in strs:
+            eval_dict[s]["std_err"][name] = eval_dict[s]["std"][name] / np.sqrt(args.eval_trials)
+
         
-        eval_dict_y[name] = np.mean(y_accs)
-        #eval_dict_y[name]["std"] = np.std(y_accs)
-        
-        eval_dict_h[name] = np.mean(h_accs)
-        #eval_dict_h[name]["std"] = np.std(h_accs)
         print("\t%s\n\t\tPosition Prediction: \n\t\t\t x-acc: %9.3f%% +- %9.3f \n\t\t\t y-acc: %9.3f%% +- %9.3f"%
-              (name, eval_dict_x[name], np.std(x_accs) / np.sqrt(args.eval_trials),
-               eval_dict_y[name],np.std(y_accs) / np.sqrt(args.eval_trials)))
+              (name, eval_dict["x"]["avg_acc"][name], eval_dict["x"]["std_err"][name],
+               eval_dict["y"]["avg_acc"][name],eval_dict["y"]["std_err"][name]))
         print("\t\tHeading Prediction: \n\t\t\t h-acc: %9.3f%% +- %9.3f"%
-              (eval_dict_h[name], np.std(h_accs) / np.sqrt(args.eval_trials)))
+            (eval_dict["h"]["avg_acc"][name], eval_dict["h"]["std_err"][name]))
         
-    writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict_x, global_step=episode)
-    writer.add_scalars("eval/quant/y_pos_inf_acc",eval_dict_y, global_step=episode)
-    writer.add_scalars("eval/quant/h_pos_inf_acc",eval_dict_h, global_step=episode)
+    writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict["x"]["avg_acc"], global_step=episode)
+    writer.add_scalars("eval/quant/y_pos_inf_acc",eval_dict["y"]["avg_acc"], global_step=episode)
+    writer.add_scalars("eval/quant/h_pos_inf_acc",eval_dict["h"]["avg_acc"], global_step=episode)
+    writer.add_scalars("eval/quant/x_pos_inf_std_err",eval_dict["x"]["std_err"], global_step=episode)
+    writer.add_scalars("eval/quant/y_pos_inf_std_err",eval_dict["y"]["std_err"], global_step=episode)
+    writer.add_scalars("eval/quant/h_pos_inf_std_err",eval_dict["h"]["std_err"], global_step=episode)
+    return eval_dict
+    
 
 
-# In[6]:
+# In[9]:
 
 
 #train
@@ -259,11 +269,11 @@ if __name__ == "__main__":
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
         acc = ss_train()
-        if acc ==100:
+        if acc == 100:
             break
         quant_evals({"inv_model":encoder})
         global_steps += 1
-    quant_evals(enc_dict)
+    eval_dict = quant_evals(enc_dict)
     #qual_evals(enc_dict,args)
         
 
