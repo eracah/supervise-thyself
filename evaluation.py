@@ -1,13 +1,114 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[6]:
 
 
 import torch
 from torch import nn
 import torch.functional as F
 import numpy as np
+from torch.optim import Adam, RMSprop
+import gym
+from gym_minigrid.register import env_list
+from gym_minigrid.minigrid import Grid
+from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, convert_frame, classification_acc
+
+
+# In[ ]:
+
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+# In[5]:
+
+
+def quant_eval(encoder, setup_rb, num_val_batches, grid_size): 
+    x_dim, y_dim = (grid_size, grid_size)
+    pos_pred = PosPredictor((x_dim,y_dim),embed_len=encoder.embed_len).to(DEVICE)
+    head_pred = HeadingPredictor(num_directions=4, embed_len=encoder.embed_len).to(DEVICE)
+    head_opt = Adam(lr=0.1,params=head_pred.parameters())
+    opt = Adam(lr=0.1,params=pos_pred.parameters())
+    #print("beginning eval...")
+    x_accs = []
+    y_accs = []
+    h_accs = []
+    
+    for batch,f0,f1 in eval_iter(encoder,num_val_batches, setup_replay_buffer_fn= setup_rb):
+        pos_pred.zero_grad()
+        heading_guess = head_pred(f0)
+        true_heading = batch.x0_heading
+        heading_loss = nn.CrossEntropyLoss()(heading_guess, true_heading)
+        h_accs.append(classification_acc(y_logits=heading_guess,y_true=true_heading))
+        
+        
+        
+        
+        
+        x_pred,y_pred = pos_pred(f0)
+        x_true, y_true = batch.x0_coords[:,0],batch.x0_coords[:,1]
+        loss = nn.CrossEntropyLoss()(x_pred,x_true) + nn.CrossEntropyLoss()(y_pred,y_true)
+        x_accs.append(classification_acc(y_logits=x_pred,y_true=x_true))
+        y_accs.append(classification_acc(y_logits=y_pred,y_true=y_true))
+        
+        
+        heading_loss.backward()
+        head_opt.step()
+        loss.backward()
+        opt.step()
+    x_acc, y_acc, h_acc = np.mean(x_accs), np.mean(y_accs), np.mean(h_accs)
+    return x_acc,y_acc, h_acc
+
+def quant_evals(encoder_dict, setup_rb, writer, args, episode):
+    env = gym.make(args.env_name)
+    grid_size = env.grid_size
+    strs = ["x","y","h"]
+    eval_dict = {k:{"avg_acc":{}, "std":{}, "std_err":{}} for k in strs}
+    for name,encoder in encoder_dict.items():
+        x_accs,y_accs,h_accs = [], [], []
+        for i in range(args.eval_trials):
+            x_acc, y_acc,h_acc = quant_eval(encoder,setup_rb,args.num_val_batches, grid_size)
+            x_accs.append(x_acc)
+            y_accs.append(y_acc)
+            h_accs.append(h_acc)
+        
+        eval_dict["x"]["avg_acc"][name] = np.mean(x_accs)
+        eval_dict["y"]["avg_acc"][name] = np.mean(y_accs)
+        eval_dict["h"]["avg_acc"][name] = np.mean(h_accs)
+        eval_dict["x"]["std"][name] = np.std(x_accs)
+        eval_dict["y"]["std"][name] = np.std(y_accs)
+        eval_dict["h"]["std"][name] = np.std(h_accs)
+        for s in strs:
+            eval_dict[s]["std_err"][name] = eval_dict[s]["std"][name] / np.sqrt(args.eval_trials)
+
+        
+        print("\t%s\n\t\tPosition Prediction: \n\t\t\t x-acc: %9.3f%% +- %9.3f \n\t\t\t y-acc: %9.3f%% +- %9.3f"%
+              (name, eval_dict["x"]["avg_acc"][name], eval_dict["x"]["std_err"][name],
+               eval_dict["y"]["avg_acc"][name],eval_dict["y"]["std_err"][name]))
+        print("\t\tHeading Prediction: \n\t\t\t h-acc: %9.3f%% +- %9.3f"%
+            (eval_dict["h"]["avg_acc"][name], eval_dict["h"]["std_err"][name]))
+        
+    writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict["x"]["avg_acc"], global_step=episode)
+    writer.add_scalars("eval/quant/y_pos_inf_acc",eval_dict["y"]["avg_acc"], global_step=episode)
+    writer.add_scalars("eval/quant/h_pos_inf_acc",eval_dict["h"]["avg_acc"], global_step=episode)
+    writer.add_scalars("eval/quant/x_pos_inf_std_err",eval_dict["x"]["std_err"], global_step=episode)
+    writer.add_scalars("eval/quant/y_pos_inf_std_err",eval_dict["y"]["std_err"], global_step=episode)
+    writer.add_scalars("eval/quant/h_pos_inf_std_err",eval_dict["h"]["std_err"], global_step=episode)
+    return eval_dict
+    
+
+
+# In[3]:
+
+
+def eval_iter(encoder, num_batches,setup_replay_buffer_fn, batch_size=64):
+    replay_buffer = setup_replay_buffer_fn()
+    for i in range(num_batches):
+        batch = replay_buffer.sample(batch_size)
+        f0 = encoder(batch.x0).detach()
+        f1 = encoder(batch.x1).detach()
+        yield batch, f0,f1
 
 
 # In[3]:

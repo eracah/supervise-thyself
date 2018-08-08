@@ -24,10 +24,9 @@ from functools import partial
 from replay_buffer import setup_replay_buffer
 from base_encoder import Encoder
 from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
-#from dqn import get_q_loss, QNet, qpolicy
 from inverse_model import InverseModel
 from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, convert_frame, classification_acc
-from evaluation import PosPredictor, Decoder, HeadingPredictor,traverse_latent_space
+from evaluation import quant_evals
 
 
 # In[2]:
@@ -52,11 +51,13 @@ def setup_args():
     parser.add_argument("--batch_norm",action="store_true")
     parser.add_argument("--buffer_size",type=int,default=10**6)
     parser.add_argument("--init_buffer_size",type=int,default=50000)
+    parser.add_argument("--eval_init_buffer_size",type=int,default=1000)
     parser.add_argument("--eval_trials",type=int,default=5)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--action_strings",type=str, nargs='+', default=["forward", "left", "right"])
     parser.add_argument("--num_val_batches", type=int, default=100)
     parser.add_argument("--decoder_batches", type=int, default=1000)
+    parser.add_argument("--collect_data",action="store_true")
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -103,26 +104,30 @@ def setup_models():
     
 
 
-# In[3]:
+# In[4]:
 
 
-def ss_train():
+def ss_train(env, args, writer, episode):
     im_losses, im_accs = [], []
     done = False
     state = env.reset()
+    i = 0
     while not done:
         
         im_opt.zero_grad()
-        policy = lambda x0: np.random.choice(action_space)
-        transition = collect_one_data_point(convert_fxn=convert_fxn,
-                                                      env=env,
-                                                      policy=policy,
-                                                      with_agent_pos=with_agent_pos,
-                                                    with_agent_heading=with_agent_heading)
+        if args.collect_data:
+            policy = lambda x0: np.random.choice(action_space)
+            transition = collect_one_data_point(convert_fxn=convert_fxn,
+                                                          env=env,
+                                                          policy=policy,
+                                                          with_agent_pos=with_agent_pos,
+                                                        with_agent_heading=with_agent_heading)
 
 
-        done = transition.done
-        replay_buffer.push(*transition)
+            done = transition.done
+            replay_buffer.push(*transition)
+        else:
+            done = True if i >= 256 else False
         trans = replay_buffer.sample(args.batch_size)
         a_pred = inv_model(trans.x0,trans.x1)
         im_loss = nn.CrossEntropyLoss()(a_pred,trans.a)
@@ -133,111 +138,17 @@ def ss_train():
 
         im_loss.backward()
         im_opt.step()
+        i += 1
     im_loss, im_acc = np.mean(im_losses), np.mean(im_accs)
     writer.add_scalar("train/loss",im_loss,global_step=episode)
     writer.add_scalar("train/acc",im_acc,global_step=episode)
     print("\tIM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
-    return im_acc
+    return im_loss, im_acc
 
   
 
 
-# In[4]:
-
-
-def eval_iter(encoder, num_batches, batch_size=None):
-    replay_buffer = setup_rb()
-    if not batch_size:
-        batch_size = args.batch_size
-    for i in range(num_batches):
-        batch = replay_buffer.sample(batch_size)
-        f0 = encoder(batch.x0).detach()
-        f1 = encoder(batch.x1).detach()
-        yield batch, f0,f1
-    
-
-
 # In[5]:
-
-
-def quant_eval(encoder):    
-    x_dim, y_dim = (env.grid_size, env.grid_size)
-    pos_pred = PosPredictor((x_dim,y_dim),embed_len=encoder.embed_len).to(DEVICE)
-    head_pred = HeadingPredictor(num_directions=4, embed_len=encoder.embed_len).to(DEVICE)
-    head_opt = Adam(lr=0.1,params=head_pred.parameters())
-    opt = Adam(lr=0.1,params=pos_pred.parameters())
-    #print("beginning eval...")
-    x_accs = []
-    y_accs = []
-    h_accs = []
-    
-    for batch,f0,f1 in eval_iter(encoder,args.num_val_batches):
-        pos_pred.zero_grad()
-        heading_guess = head_pred(f0)
-        true_heading = batch.x0_heading
-        heading_loss = nn.CrossEntropyLoss()(heading_guess, true_heading)
-        h_accs.append(classification_acc(y_logits=heading_guess,y_true=true_heading))
-        
-        
-        
-        
-        
-        x_pred,y_pred = pos_pred(f0)
-        x_true, y_true = batch.x0_coords[:,0],batch.x0_coords[:,1]
-        loss = nn.CrossEntropyLoss()(x_pred,x_true) + nn.CrossEntropyLoss()(y_pred,y_true)
-        x_accs.append(classification_acc(y_logits=x_pred,y_true=x_true))
-        y_accs.append(classification_acc(y_logits=y_pred,y_true=y_true))
-        
-        
-        heading_loss.backward()
-        head_opt.step()
-        loss.backward()
-        opt.step()
-    x_acc, y_acc, h_acc = np.mean(x_accs), np.mean(y_accs), np.mean(h_accs)
-    return x_acc,y_acc, h_acc
-
-
-# In[6]:
-
-
-def quant_evals(encoder_dict):
-    strs = ["x","y","h"]
-    eval_dict = {k:{"avg_acc":{}, "std":{}, "std_err":{}} for k in strs}
-    for name,encoder in encoder_dict.items():
-        x_accs,y_accs,h_accs = [], [], []
-        for i in range(args.eval_trials):
-            x_acc, y_acc,h_acc = quant_eval(encoder)
-            x_accs.append(x_acc)
-            y_accs.append(y_acc)
-            h_accs.append(h_acc)
-        
-        eval_dict["x"]["avg_acc"][name] = np.mean(x_accs)
-        eval_dict["y"]["avg_acc"][name] = np.mean(y_accs)
-        eval_dict["h"]["avg_acc"][name] = np.mean(h_accs)
-        eval_dict["x"]["std"][name] = np.std(x_accs)
-        eval_dict["y"]["std"][name] = np.std(y_accs)
-        eval_dict["h"]["std"][name] = np.std(h_accs)
-        for s in strs:
-            eval_dict[s]["std_err"][name] = eval_dict[s]["std"][name] / np.sqrt(args.eval_trials)
-
-        
-        print("\t%s\n\t\tPosition Prediction: \n\t\t\t x-acc: %9.3f%% +- %9.3f \n\t\t\t y-acc: %9.3f%% +- %9.3f"%
-              (name, eval_dict["x"]["avg_acc"][name], eval_dict["x"]["std_err"][name],
-               eval_dict["y"]["avg_acc"][name],eval_dict["y"]["std_err"][name]))
-        print("\t\tHeading Prediction: \n\t\t\t h-acc: %9.3f%% +- %9.3f"%
-            (eval_dict["h"]["avg_acc"][name], eval_dict["h"]["std_err"][name]))
-        
-    writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict["x"]["avg_acc"], global_step=episode)
-    writer.add_scalars("eval/quant/y_pos_inf_acc",eval_dict["y"]["avg_acc"], global_step=episode)
-    writer.add_scalars("eval/quant/h_pos_inf_acc",eval_dict["h"]["avg_acc"], global_step=episode)
-    writer.add_scalars("eval/quant/x_pos_inf_std_err",eval_dict["x"]["std_err"], global_step=episode)
-    writer.add_scalars("eval/quant/y_pos_inf_std_err",eval_dict["y"]["std_err"], global_step=episode)
-    writer.add_scalars("eval/quant/h_pos_inf_std_err",eval_dict["h"]["std_err"], global_step=episode)
-    return eval_dict
-    
-
-
-# In[9]:
 
 
 #train
@@ -251,13 +162,15 @@ if __name__ == "__main__":
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     setup_rb = partial(setup_replay_buffer,capacity=args.buffer_size, 
                                         batch_size=args.batch_size, 
-                                        init_buffer_size=args.init_buffer_size,
                                         env=env,
                                         action_space=action_space,
                                         resize_to=args.resize_to,
                                         with_agent_pos = with_agent_pos,
                                         with_agent_heading = with_agent_heading)
-    replay_buffer = setup_rb()
+    
+    setup_eval_rb = partial(setup_rb,init_buffer_size=args.eval_init_buffer_size)
+    
+    replay_buffer = setup_rb(init_buffer_size=args.init_buffer_size)
     encoder, inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
     enc_dict = {"inv_model":encoder, 
                      "raw_pixel_enc":raw_pixel_enc, 
@@ -269,11 +182,11 @@ if __name__ == "__main__":
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
         acc = ss_train()
-        if acc == 100:
+        if acc > 1:
             break
-        quant_evals({"inv_model":encoder})
+        quant_evals({"inv_model":encoder},setup_eval_rb, writer, args, episode)
         global_steps += 1
-    eval_dict = quant_evals(enc_dict)
+    eval_dict = quant_evals(enc_dict, setup_eval_rb, writer, args, episode)
     #qual_evals(enc_dict,args)
         
 
