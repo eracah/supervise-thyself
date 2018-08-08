@@ -1,12 +1,14 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[4]:
 
 
+import custom_grids
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
+
 import torch
 from torch import nn
 import torch.functional as F
@@ -27,6 +29,12 @@ from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from inverse_model import InverseModel
 from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, convert_frame, classification_acc
 from evaluation import quant_evals
+
+
+# In[6]:
+
+
+#env = gym.make('MiniGrid-Empty-32x32-v0')
 
 
 # In[2]:
