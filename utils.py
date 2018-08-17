@@ -112,13 +112,13 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
 # In[7]:
 
 
-def get_trans_tuple(with_agent_pos=False, with_agent_direction=False):
+def get_trans_tuple():
         tuple_fields = ['x0','x1','a', 'r', 'done']
         
-        if with_agent_pos:
-            tuple_fields.extend(["x0_coords","x1_coords"])
-        if with_agent_direction:
-            tuple_fields.extend(["x0_direction","x1_direction"])
+
+        tuple_fields.extend(['x0_coord_x', 'x0_coord_y', 'x1_coord_x', 'x1_coord_y'])
+
+        tuple_fields.extend(["x0_direction","x1_direction"])
         
         Transition = namedtuple("Transition",tuple(tuple_fields))
         return Transition
@@ -129,11 +129,11 @@ def get_trans_tuple(with_agent_pos=False, with_agent_direction=False):
 
 
 def create_zip_all(grid_size=(6,6),num_directions=4, num_actions=3):
-    all_coords = product(range(grid_size[0]), range(grid_size[1]))
+    all_coord_x,all_coord_y = range(1,grid_size[0] - 1), range(1,grid_size[1] - 1)
     all_directions = range(num_directions)
     all_actions = range(num_actions)
     
-    return product(all_coords,all_directions,all_actions)
+    return product(all_coord_x,all_coord_y,all_directions,all_actions)
     
 
 
@@ -148,30 +148,27 @@ def collect_one_unique_data_point(old_coords,old_directions,old_actions):
 # In[10]:
 
 
-def collect_datapoint(x0, action, env, convert_fxn, **kwargs):
+def collect_datapoint(x0, action, env, convert_fxn):
     x0 = convert_fxn(x0,to_tensor=False)
     
-    with_agent_pos = kwargs["with_agent_pos"] if "with_agent_pos" in kwargs else False
-    with_agent_direction = kwargs["with_agent_direction"] if "with_agent_direction" in kwargs else False
     
-    Transition = get_trans_tuple(with_agent_pos, with_agent_direction)
+    Transition = get_trans_tuple()
     
-    if with_agent_pos:
-        x0_coords = env.agent_pos
-    if with_agent_direction:
-        x0_direction = bin_direction(env.get_dir_vec())
+
+    x0_coord_x, x0_coord_y  = int(env.agent_pos[0]), int(env.agent_pos[1])
+    x0_direction = bin_direction(env.get_dir_vec())
     
     
     _, reward, done, _ = env.step(action)
     x1 = convert_fxn(env.render("rgb_array"))
     trans_list =  [x0,x1,action,reward,done]
     
-    if with_agent_pos:
-        x1_coords = env.agent_pos
-        trans_list.extend([x0_coords, x1_coords])
-    if with_agent_direction:
-        x1_direction = bin_direction(env.get_dir_vec())
-        trans_list.extend([x0_direction, x1_direction])
+
+    x1_coord_x, x1_coord_y = int(env.agent_pos[0]), int(env.agent_pos[1])
+    trans_list.extend([x0_coord_x, x0_coord_y,x1_coord_x, x1_coord_y])
+
+    x1_direction = bin_direction(env.get_dir_vec())
+    trans_list.extend([x0_direction, x1_direction])
     return Transition(*trans_list)
         
     
@@ -203,28 +200,28 @@ def collect_specific_datapoint(env, coords, direction, action, convert_fxn):
     env.agent_pos = np.asarray(coords)
     env = get_desired_direction(env,direction)
     x0 = env.render("rgb_array")
-    trans_obj  = collect_datapoint(x0, action, env, convert_fxn, **kwargs)
+    trans_obj  = collect_datapoint(x0, action, env, convert_fxn)
+    return trans_obj
     
 
 def collect_one_data_point(env=gym.make("MiniGrid-Empty-6x6-v0"),
                      policy=lambda x0: np.random.choice(3),
-                     convert_fxn=convert_frame,**kwargs):
+                     convert_fxn=convert_frame):
     x0 = env.render("rgb_array")
     action = policy(convert_fxn(x0,to_tensor=True))
-    transitions_obj = collect_datapoint(x0, action, env, convert_fxn, **kwargs)
+    transitions_obj = collect_datapoint(x0, action, env, convert_fxn)
     return transitions_obj
 
 
 def rollout_iterator(env=gym.make("MiniGrid-Empty-6x6-v0"),
                      policy=lambda x0: np.random.choice(3),
-                     convert_fxn=convert_frame, **kwargs):
+                     convert_fxn=convert_frame):
     _ = env.reset()
     env.seed(np.random.randint(100))
     env.agent_pos = env.place_agent(size=(env.grid_size,env.grid_size ))
     done = False
     while not done:
-        transition = collect_one_data_point(env, policy, convert_fxn,
-                                                      **kwargs)
+        transition = collect_one_data_point(env, policy, convert_fxn)
         done = transition.done
         yield transition
 
@@ -246,16 +243,16 @@ def get_list_from_buffers(other_buffer,*keys):
 def unused_datapoints_iterator(other_buffer,env=gym.make("MiniGrid-Empty-16x16-v0"),
                                convert_fxn=convert_frame):
 
-    num_datapoints = 10
     all_zip = create_zip_all(grid_size=(env.grid_size, env.grid_size))
     
-    used_coords,    used_directions,    used_actions = get_list_from_buffers(other_buffer,
-                                        "x0_coords",
+    used_coord_x,    used_coord_y,    used_directions,    used_actions = get_list_from_buffers(other_buffer,
+                                        "x0_coord_x",
+                                        "x0_coord_y",
                                         "x0_direction",
                                         "a")
     
-    return used_coords
-    used_zip = zip(used_coords,used_directions,used_actions)
+    #return used_coords
+    used_zip = zip(used_coord_x,used_coord_y,used_directions,used_actions)
 
     used_set = set(used_zip)
 
@@ -263,38 +260,12 @@ def unused_datapoints_iterator(other_buffer,env=gym.make("MiniGrid-Empty-16x16-v
 
     unused = all_set.difference(used_set)
     while len(unused) > 0:
-        coords, direction, action = unused.pop()
-        transition = collect_specific_datapoint(env,coords,direction,action,convert_fxn=convert_fxn)
+        coord_x,coord_y, direction, action = unused.pop()
+        transition = collect_specific_datapoint(env,(coord_x,coord_y),direction,action,convert_fxn=convert_fxn)
         yield transition
 
 
 # In[14]:
-
-
-# #if __name__ == "__main__":
-# from replay_buffer import create_and_fill_replay_buffer
-
-# env = gym.make("MiniGrid-Empty-6x6-v0")
-# rb = create_and_fill_replay_buffer(env=env,size=10, with_agent_pos=True, 
-#                                  with_agent_direction=True, 
-#                                  other_buffers=[])
-
-
-
-
-
-# uc = unused_datapoints_iterator(other_buffer=rb,env=env )
-
-
-# rb.memory
-
-# # from matplotlib import pyplot as plt
-
-# # for t in unused_datapoints_iterator():
-# #     break
-
-
-# In[12]:
 
 
 def mkstr(key,args={}):
@@ -302,7 +273,7 @@ def mkstr(key,args={}):
     return "=".join([key,str(d[key])])
 
 
-# In[13]:
+# In[15]:
 
 
 def initialize_weights(self):
@@ -317,7 +288,7 @@ def initialize_weights(self):
             m.bias.data.zero_()
 
 
-# In[14]:
+# In[16]:
 
 
 def write_ims(index,rows,ims,name, iter_):
@@ -327,7 +298,7 @@ def write_ims(index,rows,ims,name, iter_):
     
 
 
-# In[15]:
+# In[17]:
 
 
 def write_to_config_file(dict_,log_dir):
@@ -338,7 +309,7 @@ def write_to_config_file(dict_,log_dir):
     
 
 
-# In[16]:
+# In[18]:
 
 
 def save_incorrect_examples(y,action_guess,x0,x1,iter_):
@@ -355,7 +326,7 @@ def save_incorrect_examples(y,action_guess,x0,x1,iter_):
             print("Num wrong and right: ",num_wrong,num_right)
 
 
-# In[17]:
+# In[19]:
 
 
 def plot_test(x0s,x1s,ys,rs, label_list):
@@ -377,7 +348,7 @@ def plot_test(x0s,x1s,ys,rs, label_list):
     plt.show()
 
 
-# In[18]:
+# In[20]:
 
 
 def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
@@ -394,6 +365,27 @@ def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
                 cum_reward += float(reward)
             rewards.append(cum_reward)
         return np.mean(rewards), rewards
+
+
+# In[21]:
+
+
+if __name__ == "__main__":
+    from replay_buffer import create_and_fill_replay_buffer
+    
+    env = gym.make("MiniGrid-Empty-6x6-v0")
+    rb = create_and_fill_replay_buffer(env=env,size=10, 
+                                     other_buffers=[])
+
+    used = set([(t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction) for t in rb.memory])
+
+    unused = []
+    for t in unused_datapoints_iterator(other_buffer=rb,env=env ):
+        unused.append((t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction))
+    unused_set = set(unused)
+
+    assert used.isdisjoint(unused_set)
+    assert len(used.union(unused_set)) == (env.grid_size - 2)**2 * 3 * 4
 
 
 # In[ ]:

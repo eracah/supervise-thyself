@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[8]:
 
 
 import custom_grids
@@ -23,7 +23,7 @@ import numpy as np
 import time
 import json
 from functools import partial
-from replay_buffer import create_and_fill_replay_buffer
+from replay_buffer import BufferFiller
 from base_encoder import Encoder
 from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from inverse_model import InverseModel
@@ -31,13 +31,13 @@ from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, c
 from evaluation import quant_evals
 
 
-# In[2]:
+# In[9]:
 
 
 #env = gym.make('MiniGrid-Empty-32x32-v0')
 
 
-# In[3]:
+# In[13]:
 
 
 def setup_args():
@@ -52,6 +52,7 @@ def setup_args():
     parser.add_argument("--lr", type=float, default=0.00025)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
+    parser.add_argument("--val_batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
     parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
     parser.add_argument("--epochs",type=int,default=100000)
@@ -72,6 +73,11 @@ def setup_args():
     sys.argv = tmp_argv
     if test_notebook:
         args.init_buffer_size = 100
+        args.eval_init_buffer_size = 15
+        args.val_batch_size = 5
+        args.batch_size = 32
+        args.num_val_batches = 2
+        args.num_episodes = 1
         #args.online=True
     mstr = partial(mkstr,args=args)
     output_dirname = ("notebook_" if test_notebook else "") + "_".join([mstr("env_name"),
@@ -108,35 +114,53 @@ def setup_models():
     return encoder,inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, 
     
 
+def setup_tr_val_test(env, policy, convert_fxn):
 
+    
+    
+    bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy)
+    print("creating tr_buf")
+    tr_buf = bf.create_and_fill(size=args.init_buffer_size,
+                                batch_size=args.batch_size)
+    print("creating val_buf")
+    val_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+                                batch_size=args.val_batch_size,
+                                conflicting_buffer=tr_buf)
+    
+    print("creating test_buf")
+    test_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+                                batch_size=args.val_batch_size,
+                                conflicting_buffer=tr_buf+val_buf) 
+    return tr_buf, val_buf, test_buf
+    
     
 
 
-# In[4]:
+# In[14]:
 
 
-def ss_train(env, args, writer, episode):
+def ss_train(writer, episode, tr_buf):
     im_losses, im_accs = [], []
     done = False
     state = env.reset()
     i = 0
     while not done:
         
-        im_opt.zero_grad()
-        if args.collect_data:
-            policy = lambda x0: np.random.choice(action_space)
-            transition = collect_one_data_point(convert_fxn=convert_fxn,
-                                                          env=env,
-                                                          policy=policy,
-                                                          with_agent_pos=with_agent_pos,
-                                                        with_agent_direction=with_agent_direction)
+#         im_opt.zero_grad()
+#         if args.collect_data:
+#             policy = lambda x0: np.random.choice(action_space)
+#             transition = collect_one_data_point(convert_fxn=convert_fxn,
+#                                                           env=env,
+#                                                           policy=policy,
+#                                                           with_agent_pos=with_agent_pos,
+#                                                         with_agent_direction=with_agent_direction)
 
 
-            done = transition.done
-            replay_buffer.push(*transition)
-        else:
-            done = True if i >= 256 else False
-        trans = replay_buffer.sample(args.batch_size)
+#             done = transition.done
+#             replay_buffer.push(*transition)
+#         else:
+        done = True if i >= 2 else False
+        trans = tr_buf.sample(args.batch_size)
         a_pred = inv_model(trans.x0,trans.x1)
         im_loss = nn.CrossEntropyLoss()(a_pred,trans.a)
         im_losses.append(float(im_loss.data))
@@ -156,29 +180,21 @@ def ss_train(env, args, writer, episode):
   
 
 
-# In[5]:
+# In[15]:
 
 
 #train
 if __name__ == "__main__":
-    with_agent_pos = True
-    with_agent_direction = True
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     args = setup_args()
     writer = setup_dirs_logs(args)
     env, action_space = setup_env(args.env_name)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
-    setup_rb = partial(create_and_fill_replay_buffer,capacity=args.buffer_size, 
-                                        batch_size=args.batch_size, 
-                                        env=env,
-                                        action_space=action_space,
-                                        resize_to=args.resize_to,
-                                        with_agent_pos = with_agent_pos,
-                                        with_agent_direction = with_agent_direction)
+    policy=lambda x0: np.random.choice(action_space)
+    tr_buf, val_buf, test_buf = setup_tr_val_test(env, policy, convert_fxn)
     
-    setup_eval_rb = partial(setup_rb,init_buffer_size=args.eval_init_buffer_size)
     
-    replay_buffer = setup_rb(init_buffer_size=args.init_buffer_size)
+    
     encoder, inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
     enc_dict = {"inv_model":encoder, 
                      "raw_pixel_enc":raw_pixel_enc, 
@@ -189,12 +205,12 @@ if __name__ == "__main__":
     global_steps = 0
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
-        loss, acc = ss_train(env, args, writer, episode)
-        if acc > 1:
+        loss, acc = ss_train(writer, episode, tr_buf)
+        if acc == 100:
             break
-        quant_evals({"inv_model":encoder},setup_eval_rb, writer, args, episode)
+        quant_evals({"inv_model":encoder},val_buf, writer, args, episode)
         global_steps += 1
-    eval_dict = quant_evals(enc_dict, setup_eval_rb, writer, args, episode)
+    eval_dict = quant_evals(enc_dict, val_buf, writer, args, episode)
     #qual_evals(enc_dict,args)
         
 

@@ -24,7 +24,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # In[5]:
 
 
-def quant_eval(encoder, setup_rb, num_val_batches, grid_size): 
+def quant_eval(encoder, val_buf, num_val_batches, grid_size): 
     x_dim, y_dim = (grid_size, grid_size)
     pos_pred = PosPredictor((x_dim,y_dim),embed_len=encoder.embed_len).to(DEVICE)
     dir_pred = DirectionPredictor(num_directions=4, embed_len=encoder.embed_len).to(DEVICE)
@@ -35,7 +35,7 @@ def quant_eval(encoder, setup_rb, num_val_batches, grid_size):
     y_accs = []
     h_accs = []
     
-    for batch,f0,f1 in eval_iter(encoder,num_val_batches, setup_replay_buffer_fn= setup_rb):
+    for batch,f0,f1 in eval_iter(encoder,num_val_batches, val_buf):
         pos_pred.zero_grad()
         direction_guess = dir_pred(f0)
         true_direction = batch.x0_direction
@@ -47,7 +47,7 @@ def quant_eval(encoder, setup_rb, num_val_batches, grid_size):
         
         
         x_pred,y_pred = pos_pred(f0)
-        x_true, y_true = batch.x0_coords[:,0],batch.x0_coords[:,1]
+        x_true, y_true = batch.x0_coord_x,batch.x0_coord_y
         loss = nn.CrossEntropyLoss()(x_pred,x_true) + nn.CrossEntropyLoss()(y_pred,y_true)
         x_accs.append(classification_acc(y_logits=x_pred,y_true=x_true))
         y_accs.append(classification_acc(y_logits=y_pred,y_true=y_true))
@@ -60,7 +60,7 @@ def quant_eval(encoder, setup_rb, num_val_batches, grid_size):
     x_acc, y_acc, h_acc = np.mean(x_accs), np.mean(y_accs), np.mean(h_accs)
     return x_acc,y_acc, h_acc
 
-def quant_evals(encoder_dict, setup_rb, writer, args, episode):
+def quant_evals(encoder_dict, val_buf, writer, args, episode):
     env = gym.make(args.env_name)
     grid_size = env.grid_size
     strs = ["x","y","h"]
@@ -68,7 +68,7 @@ def quant_evals(encoder_dict, setup_rb, writer, args, episode):
     for name,encoder in encoder_dict.items():
         x_accs,y_accs,h_accs = [], [], []
         for i in range(args.eval_trials):
-            x_acc, y_acc,h_acc = quant_eval(encoder,setup_rb,args.num_val_batches, grid_size)
+            x_acc, y_acc,h_acc = quant_eval(encoder,val_buf,args.num_val_batches, grid_size)
             x_accs.append(x_acc)
             y_accs.append(y_acc)
             h_accs.append(h_acc)
@@ -99,13 +99,12 @@ def quant_evals(encoder_dict, setup_rb, writer, args, episode):
     
 
 
-# In[3]:
+# In[1]:
 
 
-def eval_iter(encoder,num_batches, setup_replay_buffer_fn, batch_size=64):
-    replay_buffer = setup_replay_buffer_fn()
+def eval_iter(encoder,num_batches, val_buf):
     for i in range(num_batches):
-        batch = replay_buffer.sample(batch_size)
+        batch = val_buf.sample()
         f0 = encoder(batch.x0).detach()
         f1 = encoder(batch.x1).detach()
         yield batch, f0,f1

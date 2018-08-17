@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[3]:
+# In[1]:
 
 
 import custom_grids
@@ -9,32 +9,34 @@ import random
 from collections import namedtuple
 import torch
 import numpy as np
-from utils import setup_env,convert_frames,convert_frame, rollout_iterator, plot_test
+from utils import setup_env,convert_frames,convert_frame, rollout_iterator, plot_test,unused_datapoints_iterator
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 from functools import partial
 from utils import get_trans_tuple
+from functools import partial
 
 
-# In[4]:
+# In[2]:
 
 
 class ReplayMemory(object):
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
-    def __init__(self, capacity=10**6, batch_size=64, **kwargs):
+    def __init__(self, capacity=10**6, batch_size=64):
         self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         self.capacity = capacity
         self.batch_size = batch_size
         self.memory = []
         self.position = 0
-        self.with_agent_pos = kwargs["with_agent_pos"] if "with_agent_pos" in kwargs else False
-        self.with_agent_direction = kwargs["with_agent_direction"] if "with_agent_direction" in kwargs else False
+
         
-        self.Transition = get_trans_tuple(self.with_agent_pos,
-                                          self.with_agent_direction)
+        self.Transition = get_trans_tuple()
             
 
+    def __add__(self,other_buffer):
+        self.memory = self.memory + other_buffer.memory
+        return self
     def push(self, *args):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
@@ -48,13 +50,16 @@ class ReplayMemory(object):
         trans = random.sample(self.memory, batch_size)
         trans_batch = self.Transition(*zip(*trans))
         tb_dict = trans_batch._asdict()
-        if self.with_agent_pos:
-            tb_dict["x0_coords"] = torch.tensor(trans_batch.x0_coords).long().to(self.DEVICE)
-            tb_dict["x1_coords"] = torch.tensor(trans_batch.x1_coords).long().to(self.DEVICE)
 
-        if self.with_agent_direction:
-            tb_dict["x0_direction"] = torch.tensor(trans_batch.x0_direction).long().to(self.DEVICE)
-            tb_dict["x1_direction"] = torch.tensor(trans_batch.x1_direction).long().to(self.DEVICE)
+        tb_dict["x0_coord_x"] = torch.tensor(trans_batch.x0_coord_x).long().to(self.DEVICE)
+        tb_dict["x0_coord_y"] = torch.tensor(trans_batch.x0_coord_y).long().to(self.DEVICE)
+        tb_dict["x1_coord_x"] = torch.tensor(trans_batch.x1_coord_x).long().to(self.DEVICE)
+        tb_dict["x1_coord_y"] = torch.tensor(trans_batch.x1_coord_y).long().to(self.DEVICE)
+
+        tb_dict["x0_direction"] = torch.tensor(trans_batch.x0_direction).long().to(self.DEVICE)
+        tb_dict["x1_direction"] = torch.tensor(trans_batch.x1_direction).long().to(self.DEVICE)
+
+
             
         tb_dict["x0"] = convert_frames(np.asarray(trans_batch.x0),to_tensor=True,resize_to=(-1,-1)).to(self.DEVICE)
         tb_dict["x1"] = convert_frames(np.asarray(trans_batch.x1),to_tensor=True,resize_to=(-1,-1)).to(self.DEVICE)
@@ -71,53 +76,60 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[5]:
+# In[3]:
 
 
-def fill_buffer_with_rollouts(buffer,size, env, convert_fxn, policy,**kwargs):
-    global_size=0
-    while True:
-        for i, transition in enumerate(rollout_iterator(env=env,
-                                                        convert_fxn=convert_fxn,
-                                                        policy=policy,
-                                                       **kwargs)):
-            buffer.push(*transition)
-            global_size += 1
-            if global_size >= size:
-                return buffer
+class BufferFiller(object):
+    def __init__(self,
+                 convert_fxn = partial(convert_frame, resize_to=(64,64)),
+                 env = gym.make("MiniGrid-Empty-6x6-v0"),
+                 policy= lambda x0: np.random.choice(3)):
+        self.env = env
+        self.policy = policy
+        self.convert_fxn = convert_fxn
+        
 
+
+    def create_and_fill(self,size=1000,
+                        batch_size=32,
+                        capacity=10000, 
+                        conflicting_buffer=None):
+
+        buffer = ReplayMemory(capacity=capacity,
+                                   batch_size=batch_size)
+
+        if not conflicting_buffer:
+            buffer = self.fill_buffer_with_rollouts(buffer,size)
+        else:
+            buffer = self.fill_buffer_with_unique_transitions(conflicting_buffer,buffer,size)
+
+        return buffer
     
+    def fill_buffer_with_rollouts(self,buffer,size):
+        iterator = partial(rollout_iterator,env=self.env,
+                                    convert_fxn=self.convert_fxn,
+                                    policy=self.policy)
+        buffer = self.fill_buffer_with_iterator(buffer,size,iterator)
+        return buffer  
 
-
-# In[6]:
-
-
-def fill_buffer_with_unique_transitions(other_buffers,buffer,size, env, convert_fxn, policy,**kwargs):
-    print(other_buffers)
-    return buffer
-
-
-# In[7]:
-
-
-def create_and_fill_replay_buffer(size=1000,
-                                  capacity=10000, 
-                                  batch_size=32,
-                                   resize_to = (64,64),
-                                   env = gym.make("MiniGrid-Empty-6x6-v0"),
-                                   policy= lambda x0: np.random.choice(3),
-                                other_buffers=None,
-                                   **kwargs):
+    def fill_buffer_with_unique_transitions(self,other_buffer,buffer,size):
+        iterator = partial(unused_datapoints_iterator, other_buffer=other_buffer,env=self.env,
+                                              convert_fxn=self.convert_fxn)
+        buffer= self.fill_buffer_with_iterator(buffer,size,iterator)
+        return buffer
     
-    buffer = ReplayMemory(capacity=capacity,
-                               batch_size=batch_size,**kwargs)
-    convert_fxn = partial(convert_frame, resize_to=resize_to)
-    if not other_buffers:
-        buffer = fill_buffer_with_rollouts(buffer,size, env, convert_fxn, policy,**kwargs)
-    else:
-        buffer = fill_buffer_with_unique_transitions(other_buffers,buffer,size, env, convert_fxn, policy,**kwargs)
-    
-    return buffer
+    def fill_buffer_with_iterator(self,buffer,size, iterator):
+        global_size=0
+        while True:
+            for i, transition in enumerate(iterator()):
+                buffer.push(*transition)
+                global_size += 1
+                if global_size >= size:
+                    return buffer
+
+
+
+
         
 
     
@@ -126,17 +138,28 @@ def create_and_fill_replay_buffer(size=1000,
  
 
 
-# In[12]:
+# In[4]:
 
 
 if __name__ == "__main__":
-    rb = create_and_fill_replay_buffer(size=10, with_agent_pos=True, with_agent_direction=True, other_buffers=[])
-#     batch = rb.sample()
+    bf = BufferFiller()
+    
+    rb = bf.create_and_fill(size=1000)
 
-#     plot_test(batch.x0,batch.x1,batch.a,batch.r, label_list=["left","right","forward"] )
+    val_rb = bf.create_and_fill(size=100,conflicting_buffer=rb)
+    
+    tst_rb = bf.create_and_fill(size=100,conflicting_buffer=rb+val_rb)
+    vt = val_rb.sample(5)
 
-    get_list_from_buffers(rb,
-                                            "x0_coords",
-                                            "x0_direction",
-                                            "a")
+    vts = set([vt.x0_coord_x,vt.x0_coord_y,vt.a,vt.x0_direction])
+
+    rt = rb.sample(15)
+
+    rts = set([rt.x0_coord_x,rt.x0_coord_y,rt.a,rt.x0_direction])
+
+    tt = tst_rb.sample(5)
+    tts = set([tt.x0_coord_x,tt.x0_coord_y,tt.a,tt.x0_direction])
+    assert rts.isdisjoint(vts)
+    assert rts.isdisjoint(tts)
+    assert vts.isdisjoint(tts)
 
