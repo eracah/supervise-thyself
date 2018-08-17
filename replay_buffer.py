@@ -1,9 +1,10 @@
 
 # coding: utf-8
 
-# In[7]:
+# In[3]:
 
 
+import custom_grids
 import random
 from collections import namedtuple
 import torch
@@ -16,7 +17,7 @@ from functools import partial
 from utils import get_trans_tuple
 
 
-# In[8]:
+# In[4]:
 
 
 class ReplayMemory(object):
@@ -28,10 +29,10 @@ class ReplayMemory(object):
         self.memory = []
         self.position = 0
         self.with_agent_pos = kwargs["with_agent_pos"] if "with_agent_pos" in kwargs else False
-        self.with_agent_heading = kwargs["with_agent_heading"] if "with_agent_heading" in kwargs else False
+        self.with_agent_direction = kwargs["with_agent_direction"] if "with_agent_direction" in kwargs else False
         
         self.Transition = get_trans_tuple(self.with_agent_pos,
-                                          self.with_agent_heading)
+                                          self.with_agent_direction)
             
 
     def push(self, *args):
@@ -51,9 +52,9 @@ class ReplayMemory(object):
             tb_dict["x0_coords"] = torch.tensor(trans_batch.x0_coords).long().to(self.DEVICE)
             tb_dict["x1_coords"] = torch.tensor(trans_batch.x1_coords).long().to(self.DEVICE)
 
-        if self.with_agent_heading:
-            tb_dict["x0_heading"] = torch.tensor(trans_batch.x0_heading).long().to(self.DEVICE)
-            tb_dict["x1_heading"] = torch.tensor(trans_batch.x1_heading).long().to(self.DEVICE)
+        if self.with_agent_direction:
+            tb_dict["x0_direction"] = torch.tensor(trans_batch.x0_direction).long().to(self.DEVICE)
+            tb_dict["x1_direction"] = torch.tensor(trans_batch.x1_direction).long().to(self.DEVICE)
             
         tb_dict["x0"] = convert_frames(np.asarray(trans_batch.x0),to_tensor=True,resize_to=(-1,-1)).to(self.DEVICE)
         tb_dict["x1"] = convert_frames(np.asarray(trans_batch.x1),to_tensor=True,resize_to=(-1,-1)).to(self.DEVICE)
@@ -70,30 +71,54 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[9]:
+# In[5]:
 
 
-def fill_replay_buffer(buffer,
-                       size,
-                       resize_to = (64,64),
-                       env = gym.make("MiniGrid-Empty-6x6-v0"),
-                       policy= lambda x0: np.random.choice(3),
-                       **kwargs
-                      ):
-    #fills replay buffer with size examples
-    rollout_size = env.max_steps
-    convert_fxn = partial(convert_frame, resize_to=resize_to)
-    num_rollouts = int(np.ceil(size / rollout_size))
+def fill_buffer_with_rollouts(buffer,size, env, convert_fxn, policy,**kwargs):
     global_size=0
-    for rollout in range(num_rollouts):
+    while True:
         for i, transition in enumerate(rollout_iterator(env=env,
                                                         convert_fxn=convert_fxn,
                                                         policy=policy,
                                                        **kwargs)):
-            if global_size >= size:
-                return
             buffer.push(*transition)
             global_size += 1
+            if global_size >= size:
+                return buffer
+
+    
+
+
+# In[6]:
+
+
+def fill_buffer_with_unique_transitions(other_buffers,buffer,size, env, convert_fxn, policy,**kwargs):
+    print(other_buffers)
+    return buffer
+
+
+# In[7]:
+
+
+def create_and_fill_replay_buffer(size=1000,
+                                  capacity=10000, 
+                                  batch_size=32,
+                                   resize_to = (64,64),
+                                   env = gym.make("MiniGrid-Empty-6x6-v0"),
+                                   policy= lambda x0: np.random.choice(3),
+                                other_buffers=None,
+                                   **kwargs):
+    
+    buffer = ReplayMemory(capacity=capacity,
+                               batch_size=batch_size,**kwargs)
+    convert_fxn = partial(convert_frame, resize_to=resize_to)
+    if not other_buffers:
+        buffer = fill_buffer_with_rollouts(buffer,size, env, convert_fxn, policy,**kwargs)
+    else:
+        buffer = fill_buffer_with_unique_transitions(other_buffers,buffer,size, env, convert_fxn, policy,**kwargs)
+    
+    return buffer
+        
 
     
 
@@ -101,37 +126,17 @@ def fill_replay_buffer(buffer,
  
 
 
-# In[10]:
-
-
-def setup_replay_buffer(capacity=10000, 
-                        batch_size=8, 
-                        init_buffer_size=128, 
-                        env= gym.make("MiniGrid-Empty-6x6-v0"),
-                        resize_to = (64,64),
-                        action_space=np.arange(3), **kwargs):
-    #print("setting up buffer")
-    replay_buffer = ReplayMemory(capacity=capacity,
-                                 batch_size=batch_size,**kwargs)
-    
-    fill_replay_buffer(buffer=replay_buffer,
-                       size=init_buffer_size,
-                       env = env,
-                       resize_to=resize_to,
-                       policy= lambda x0: np.random.choice(action_space),
-                       **kwargs
-                      )
-    #print("buffer filled!")
-    return replay_buffer
-
-
-# In[11]:
+# In[12]:
 
 
 if __name__ == "__main__":
-    rb = setup_replay_buffer( with_agent_pos=True, with_agent_heading=True)
+    rb = create_and_fill_replay_buffer(size=10, with_agent_pos=True, with_agent_direction=True, other_buffers=[])
+#     batch = rb.sample()
 
-    batch = rb.sample()
+#     plot_test(batch.x0,batch.x1,batch.a,batch.r, label_list=["left","right","forward"] )
 
-    plot_test(batch.x0,batch.x1,batch.a,batch.r, label_list=["left","right","forward"] )
+    get_list_from_buffers(rb,
+                                            "x0_coords",
+                                            "x0_direction",
+                                            "a")
 
