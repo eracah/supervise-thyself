@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[4]:
+# In[1]:
 
 
 import custom_grids
@@ -23,7 +23,7 @@ import numpy as np
 import time
 import json
 from functools import partial
-from replay_buffer import setup_replay_buffer
+from replay_buffer import create_and_fill_replay_buffer
 from base_encoder import Encoder
 from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from inverse_model import InverseModel
@@ -31,13 +31,13 @@ from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, c
 from evaluation import quant_evals
 
 
-# In[6]:
+# In[2]:
 
 
 #env = gym.make('MiniGrid-Empty-32x32-v0')
 
 
-# In[2]:
+# In[3]:
 
 
 def setup_args():
@@ -129,7 +129,7 @@ def ss_train(env, args, writer, episode):
                                                           env=env,
                                                           policy=policy,
                                                           with_agent_pos=with_agent_pos,
-                                                        with_agent_heading=with_agent_heading)
+                                                        with_agent_direction=with_agent_direction)
 
 
             done = transition.done
@@ -162,19 +162,19 @@ def ss_train(env, args, writer, episode):
 #train
 if __name__ == "__main__":
     with_agent_pos = True
-    with_agent_heading = True
+    with_agent_direction = True
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     args = setup_args()
     writer = setup_dirs_logs(args)
     env, action_space = setup_env(args.env_name)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
-    setup_rb = partial(setup_replay_buffer,capacity=args.buffer_size, 
+    setup_rb = partial(create_and_fill_replay_buffer,capacity=args.buffer_size, 
                                         batch_size=args.batch_size, 
                                         env=env,
                                         action_space=action_space,
                                         resize_to=args.resize_to,
                                         with_agent_pos = with_agent_pos,
-                                        with_agent_heading = with_agent_heading)
+                                        with_agent_direction = with_agent_direction)
     
     setup_eval_rb = partial(setup_rb,init_buffer_size=args.eval_init_buffer_size)
     
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     global_steps = 0
     for episode in range(args.num_episodes):
         print("episode %i"%episode)
-        acc = ss_train()
+        loss, acc = ss_train(env, args, writer, episode)
         if acc > 1:
             break
         quant_evals({"inv_model":encoder},setup_eval_rb, writer, args, episode)
