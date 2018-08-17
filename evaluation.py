@@ -27,8 +27,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 def quant_eval(encoder, setup_rb, num_val_batches, grid_size): 
     x_dim, y_dim = (grid_size, grid_size)
     pos_pred = PosPredictor((x_dim,y_dim),embed_len=encoder.embed_len).to(DEVICE)
-    head_pred = HeadingPredictor(num_directions=4, embed_len=encoder.embed_len).to(DEVICE)
-    head_opt = Adam(lr=0.1,params=head_pred.parameters())
+    dir_pred = DirectionPredictor(num_directions=4, embed_len=encoder.embed_len).to(DEVICE)
+    dir_opt = Adam(lr=0.1,params=dir_pred.parameters())
     opt = Adam(lr=0.1,params=pos_pred.parameters())
     #print("beginning eval...")
     x_accs = []
@@ -37,10 +37,10 @@ def quant_eval(encoder, setup_rb, num_val_batches, grid_size):
     
     for batch,f0,f1 in eval_iter(encoder,num_val_batches, setup_replay_buffer_fn= setup_rb):
         pos_pred.zero_grad()
-        heading_guess = head_pred(f0)
-        true_heading = batch.x0_heading
-        heading_loss = nn.CrossEntropyLoss()(heading_guess, true_heading)
-        h_accs.append(classification_acc(y_logits=heading_guess,y_true=true_heading))
+        direction_guess = dir_pred(f0)
+        true_direction = batch.x0_direction
+        direction_loss = nn.CrossEntropyLoss()(direction_guess, true_direction)
+        h_accs.append(classification_acc(y_logits=direction_guess,y_true=true_direction))
         
         
         
@@ -53,8 +53,8 @@ def quant_eval(encoder, setup_rb, num_val_batches, grid_size):
         y_accs.append(classification_acc(y_logits=y_pred,y_true=y_true))
         
         
-        heading_loss.backward()
-        head_opt.step()
+        direction_loss.backward()
+        dir_opt.step()
         loss.backward()
         opt.step()
     x_acc, y_acc, h_acc = np.mean(x_accs), np.mean(y_accs), np.mean(h_accs)
@@ -86,7 +86,7 @@ def quant_evals(encoder_dict, setup_rb, writer, args, episode):
         print("\t%s\n\t\tPosition Prediction: \n\t\t\t x-acc: %9.3f%% +- %9.3f \n\t\t\t y-acc: %9.3f%% +- %9.3f"%
               (name, eval_dict["x"]["avg_acc"][name], eval_dict["x"]["std_err"][name],
                eval_dict["y"]["avg_acc"][name],eval_dict["y"]["std_err"][name]))
-        print("\t\tHeading Prediction: \n\t\t\t h-acc: %9.3f%% +- %9.3f"%
+        print("\t\tdirection Prediction: \n\t\t\t h-acc: %9.3f%% +- %9.3f"%
             (eval_dict["h"]["avg_acc"][name], eval_dict["h"]["std_err"][name]))
         
     writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict["x"]["avg_acc"], global_step=episode)
@@ -102,7 +102,7 @@ def quant_evals(encoder_dict, setup_rb, writer, args, episode):
 # In[3]:
 
 
-def eval_iter(encoder, num_batches,setup_replay_buffer_fn, batch_size=64):
+def eval_iter(encoder,num_batches, setup_replay_buffer_fn, batch_size=64):
     replay_buffer = setup_replay_buffer_fn()
     for i in range(num_batches):
         batch = replay_buffer.sample(batch_size)
@@ -133,10 +133,10 @@ class PosPredictor(nn.Module):
 # In[4]:
 
 
-class HeadingPredictor(nn.Module):
-    """Predict the heading angle of the agent given an embedding"""
+class DirectionPredictor(nn.Module):
+    """Predict the direction angle of the agent given an embedding"""
     def __init__(self,num_directions, embed_len):
-        super(HeadingPredictor,self).__init__()
+        super(DirectionPredictor,self).__init__()
         self.fc = nn.Linear(in_features=embed_len, out_features=num_directions)
     def forward(self, embeddings):
         #make sure embedding is detached
