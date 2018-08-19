@@ -16,9 +16,11 @@ from gym_minigrid.minigrid import Grid
 from functools import partial
 from utils import get_trans_tuple
 from functools import partial
+#from torch.utils.data import 
+import copy
 
 
-# In[2]:
+# In[12]:
 
 
 class ReplayMemory(object):
@@ -44,11 +46,15 @@ class ReplayMemory(object):
         self.memory[self.position] = self.Transition(*args)
         self.position = (self.position + 1) % self.capacity
 
-
+    
     def sample(self, batch_size=None):
         batch_size = self.batch_size if batch_size is None else batch_size
         trans = random.sample(self.memory, batch_size)
-        trans_batch = self.Transition(*zip(*trans))
+        return self._convert_raw_sample(trans)
+        
+    
+    def _convert_raw_sample(self,transitions):
+        trans_batch = self.Transition(*zip(*transitions))
         tb_dict = trans_batch._asdict()
 
         tb_dict["x0_coord_x"] = torch.tensor(trans_batch.x0_coord_x).long().to(self.DEVICE)
@@ -70,19 +76,28 @@ class ReplayMemory(object):
         return batch
         
     def __iter__(self):
-        while True:
-            yield self.sample(self.batch_size)
+        """Iterator that samples without replacement for replay buffer
+        It's basically like a standard sgd setup
+        If you want to sample with replacement like standard replay buffer use self.sample"""
+        mem = copy.deepcopy(self.memory)
+        random.shuffle(mem)
+        size = len(mem)
+        for st in range(0, size, self.batch_size):
+            end = st+self.batch_size if st+self.batch_size <= size else size
+            raw_sample = self.memory[st:end]
+            yield self._convert_raw_sample(raw_sample)
+    
     def __len__(self):
         return len(self.memory)
 
 
-# In[3]:
+# In[13]:
 
 
 class BufferFiller(object):
     def __init__(self,
                  convert_fxn = partial(convert_frame, resize_to=(64,64)),
-                 env = gym.make("MiniGrid-Empty-6x6-v0"),
+                 env = gym.make("MiniGrid-Empty-16x16-v0"),
                  policy= lambda x0: np.random.choice(3)):
         self.env = env
         self.policy = policy
@@ -138,17 +153,17 @@ class BufferFiller(object):
  
 
 
-# In[4]:
+# In[15]:
 
 
 if __name__ == "__main__":
     bf = BufferFiller()
     
-    rb = bf.create_and_fill(size=1000)
+    rb = bf.create_and_fill(size=100)
 
-    val_rb = bf.create_and_fill(size=100,conflicting_buffer=rb)
+    val_rb = bf.create_and_fill(size=10,conflicting_buffer=rb)
     
-    tst_rb = bf.create_and_fill(size=100,conflicting_buffer=rb+val_rb)
+    tst_rb = bf.create_and_fill(size=10,conflicting_buffer=rb+val_rb)
     vt = val_rb.sample(5)
 
     vts = set([vt.x0_coord_x,vt.x0_coord_y,vt.a,vt.x0_direction])

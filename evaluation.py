@@ -35,7 +35,7 @@ def quant_eval(encoder, val_buf, num_val_batches, grid_size):
     y_accs = []
     h_accs = []
     
-    for batch,f0,f1 in eval_iter(encoder,num_val_batches, val_buf):
+    for batch,f0,f1 in eval_iter(encoder,val_buf):
         pos_pred.zero_grad()
         direction_guess = dir_pred(f0)
         true_direction = batch.x0_direction
@@ -99,12 +99,11 @@ def quant_evals(encoder_dict, val_buf, writer, args, episode):
     
 
 
-# In[1]:
+# In[2]:
 
 
-def eval_iter(encoder,num_batches, val_buf):
-    for i in range(num_batches):
-        batch = val_buf.sample()
+def eval_iter(encoder,val_buf):
+    for batch in val_buf:
         f0 = encoder(batch.x0).detach()
         f1 = encoder(batch.x1).detach()
         yield batch, f0,f1

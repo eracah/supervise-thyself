@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[8]:
+# In[1]:
 
 
 import custom_grids
@@ -31,13 +31,13 @@ from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, c
 from evaluation import quant_evals
 
 
-# In[9]:
+# In[2]:
 
 
 #env = gym.make('MiniGrid-Empty-32x32-v0')
 
 
-# In[13]:
+# In[3]:
 
 
 def setup_args():
@@ -136,15 +136,15 @@ def setup_tr_val_test(env, policy, convert_fxn):
     
 
 
-# In[14]:
+# In[5]:
 
 
 def ss_train(writer, episode, tr_buf):
     im_losses, im_accs = [], []
     done = False
     state = env.reset()
-    i = 0
-    while not done:
+    #i = 0
+    #while not done:
         
 #         im_opt.zero_grad()
 #         if args.collect_data:
@@ -159,8 +159,9 @@ def ss_train(writer, episode, tr_buf):
 #             done = transition.done
 #             replay_buffer.push(*transition)
 #         else:
-        done = True if i >= 2 else False
-        trans = tr_buf.sample(args.batch_size)
+        #done = True if i >= 2 else False
+        #trans = tr_buf.sample(args.batch_size)
+    for trans in tr_buf:
         a_pred = inv_model(trans.x0,trans.x1)
         im_loss = nn.CrossEntropyLoss()(a_pred,trans.a)
         im_losses.append(float(im_loss.data))
@@ -170,7 +171,7 @@ def ss_train(writer, episode, tr_buf):
 
         im_loss.backward()
         im_opt.step()
-        i += 1
+        #i += 1
     im_loss, im_acc = np.mean(im_losses), np.mean(im_accs)
     writer.add_scalar("train/loss",im_loss,global_step=episode)
     writer.add_scalar("train/acc",im_acc,global_step=episode)
@@ -180,7 +181,7 @@ def ss_train(writer, episode, tr_buf):
   
 
 
-# In[15]:
+# In[6]:
 
 
 #train
