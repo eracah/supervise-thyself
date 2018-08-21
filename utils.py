@@ -72,12 +72,12 @@ def setup_env(env_name):
     return env, action_space
 
 
-# In[5]:
+# In[1]:
 
 
-def classification_acc(y_logits,y_true):
-    y_guess = torch.argmax(y_logits,dim=1)
-    acc = (float(torch.sum(torch.eq(y_true,y_guess)).data) / y_true.size(0))*100
+def classification_acc(logits,true):
+    guess = torch.argmax(logits,dim=1)
+    acc = (float(torch.sum(torch.eq(true,guess)).data) / true.size(0))*100
     return acc
 
 
