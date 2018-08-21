@@ -28,7 +28,7 @@ from base_encoder import Encoder
 from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from inverse_model import InverseModel
 from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, convert_frame, classification_acc
-from evaluation import quant_evals
+from quant_evaluation import quant_evals
 
 
 # In[2]:
@@ -50,13 +50,14 @@ def setup_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
+    parser.add_argument("--lasso_coeff", type=float, default=0.1)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--val_batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
     parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
     parser.add_argument("--epochs",type=int,default=100000)
-    parser.add_argument("--width",type=int,default=32)
+    parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--batch_norm",action="store_true")
     parser.add_argument("--buffer_size",type=int,default=10**6)
     parser.add_argument("--init_buffer_size",type=int,default=50000)
@@ -64,7 +65,6 @@ def setup_args():
     parser.add_argument("--eval_trials",type=int,default=5)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--action_strings",type=str, nargs='+', default=["forward", "left", "right"])
-    parser.add_argument("--num_val_batches", type=int, default=100)
     parser.add_argument("--decoder_batches", type=int, default=1000)
     parser.add_argument("--collect_data",action="store_true")
     args = parser.parse_args()
@@ -79,6 +79,7 @@ def setup_args():
         args.num_val_batches = 2
         args.num_episodes = 1
         #args.online=True
+    args.device = "cuda" if torch.cuda.is_available() else "cpu"
     mstr = partial(mkstr,args=args)
     output_dirname = ("notebook_" if test_notebook else "") + "_".join([mstr("env_name"),
                                                                         mstr("resize_to")
@@ -98,23 +99,23 @@ def setup_dirs_logs(args):
 def setup_models():
     encoder = Encoder(in_ch=3,
                       im_wh=args.resize_to,
-                      h_ch=args.width,
+                      h_ch=args.hidden_width,
                       embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(DEVICE)
+                      batch_norm=args.batch_norm).to(args.device)
 
-    inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(DEVICE)
-    raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(DEVICE)
-    rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(DEVICE)
+    inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
+    raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device)
+    rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device)
     rand_cnn = Encoder(in_ch=3,
                       im_wh=args.resize_to,
-                      h_ch=args.width,
+                      h_ch=args.hidden_width,
                       embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(DEVICE)
+                      batch_norm=args.batch_norm).to(args.device)
 
     return encoder,inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, 
     
 
-def setup_tr_val_test(env, policy, convert_fxn):
+def setup_tr_val_val_test(env, policy, convert_fxn):
 
     
     
@@ -122,16 +123,21 @@ def setup_tr_val_test(env, policy, convert_fxn):
     print("creating tr_buf")
     tr_buf = bf.create_and_fill(size=args.init_buffer_size,
                                 batch_size=args.batch_size)
-    print("creating val_buf")
-    val_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+    print("creating val1_buf")
+    val1_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
                                 batch_size=args.val_batch_size,
                                 conflicting_buffer=tr_buf)
+    
+    print("creating val2_buf")
+    val2_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+                                batch_size=args.val_batch_size,
+                                conflicting_buffer=tr_buf + val1_buf)
     
     print("creating test_buf")
     test_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
                                 batch_size=args.val_batch_size,
-                                conflicting_buffer=tr_buf+val_buf) 
-    return tr_buf, val_buf, test_buf
+                                conflicting_buffer=tr_buf+val1_buf + val2_buf) 
+    return tr_buf, val1_buf, val2_buf, test_buf
     
     
 
@@ -166,7 +172,7 @@ def ss_train(writer, episode, tr_buf):
         im_loss = nn.CrossEntropyLoss()(a_pred,trans.a)
         im_losses.append(float(im_loss.data))
 
-        acc = classification_acc(a_pred,y_true=trans.a)
+        acc = classification_acc(logits=a_pred,true=trans.a)
         im_accs.append(acc)
 
         im_loss.backward()
@@ -181,18 +187,18 @@ def ss_train(writer, episode, tr_buf):
   
 
 
-# In[5]:
+# In[6]:
 
 
 #train
 if __name__ == "__main__":
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    
     args = setup_args()
     writer = setup_dirs_logs(args)
     env, action_space = setup_env(args.env_name)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     policy=lambda x0: np.random.choice(action_space)
-    tr_buf, val_buf, test_buf = setup_tr_val_test(env, policy, convert_fxn)
+    tr_buf, val1_buf, val2_buf, test_buf = setup_tr_val_val_test(env, policy, convert_fxn)
     
     
     
@@ -209,9 +215,9 @@ if __name__ == "__main__":
         loss, acc = ss_train(writer, episode, tr_buf)
         if acc == 100:
             break
-        quant_evals({"inv_model":encoder},val_buf, writer, args, episode)
+        quant_evals({"inv_model":encoder},val1_buf, writer, args, episode)
         global_steps += 1
-    eval_dict = quant_evals(enc_dict, val_buf, writer, args, episode)
+    eval_dict = quant_evals(enc_dict, val1_buf, writer, args, episode)
     #qual_evals(enc_dict,args)
         
 
