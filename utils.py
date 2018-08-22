@@ -59,19 +59,6 @@ def unbin_direction(binned_direction):
     
 
 
-# In[4]:
-
-
-def setup_env(env_name):
-    env = gym.make(env_name)
-    if "MiniGrid" in env_name:
-        action_space = range(3)
-    else:
-        action_space = list(range(env.action_space.n))
-    num_actions = len(action_space)
-    return env, action_space
-
-
 # In[1]:
 
 
@@ -154,8 +141,8 @@ def collect_datapoint(x0, action, env, convert_fxn):
     
     Transition = get_trans_tuple()
     
-
-    x0_coord_x, x0_coord_y  = int(env.agent_pos[0]), int(env.agent_pos[1])
+    # to make the coords start at 0
+    x0_coord_x, x0_coord_y  = int(env.agent_pos[0]) - 1, int(env.agent_pos[1]) -1
     x0_direction = bin_direction(env.get_dir_vec())
     
     
