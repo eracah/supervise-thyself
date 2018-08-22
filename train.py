@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import custom_grids
@@ -27,8 +27,8 @@ from replay_buffer import BufferFiller
 from base_encoder import Encoder
 from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from inverse_model import InverseModel
-from utils import setup_env,mkstr,write_to_config_file,collect_one_data_point, convert_frame, classification_acc
-from quant_evaluation import quant_evals
+from utils import mkstr,write_to_config_file,                collect_one_data_point, convert_frame, classification_acc
+from quant_evaluation import QuantEvals
 
 
 # In[2]:
@@ -40,6 +40,13 @@ from quant_evaluation import quant_evals
 # In[3]:
 
 
+def parse_mg(name):
+    return name.split("-")[2].split("x")[0]
+
+
+# In[ ]:
+
+
 def setup_args():
     tmp_argv = copy.deepcopy(sys.argv)
     test_notebook = False
@@ -49,9 +56,9 @@ def setup_args():
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr", type=float, default=0.00025)
+    parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--lasso_coeff", type=float, default=0.1)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
+    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-16x16-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--val_batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
@@ -81,11 +88,15 @@ def setup_args():
         #args.online=True
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     mstr = partial(mkstr,args=args)
-    output_dirname = ("notebook_" if test_notebook else "") + "_".join([mstr("env_name"),
-                                                                        mstr("resize_to")
+    output_dirname = ("nb_" if test_notebook else "") + "_".join(["e%s"%parse_mg(args.env_name),
+                                                                        "r%i"%(args.resize_to[0])
                                                                        ])
     args.output_dirname = output_dirname
     return args
+
+
+# In[ ]:
+
 
 def setup_dirs_logs(args):
     log_dir = './.logs/%s'%args.output_dirname
@@ -115,34 +126,55 @@ def setup_models():
     return encoder,inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, 
     
 
-def setup_tr_val_val_test(env, policy, convert_fxn):
+def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
 
     
     
     bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy)
     print("creating tr_buf")
-    tr_buf = bf.create_and_fill(size=args.init_buffer_size,
+    tr_buf = bf.create_and_fill(size=int(0.7*tot_examples),
                                 batch_size=args.batch_size)
+    print(len(tr_buf))
     print("creating val1_buf")
-    val1_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+    val1_buf = bf.create_and_fill(size=int(0.1*tot_examples),
                                 batch_size=args.val_batch_size,
                                 conflicting_buffer=tr_buf)
-    
+    print(len(val1_buf))
     print("creating val2_buf")
-    val2_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+    val2_buf = bf.create_and_fill(size=int(0.1*tot_examples),
                                 batch_size=args.val_batch_size,
                                 conflicting_buffer=tr_buf + val1_buf)
-    
+    print(len(val2_buf))
     print("creating test_buf")
-    test_buf = bf.create_and_fill(size=args.eval_init_buffer_size,
+    test_buf = bf.create_and_fill(size=int(0.1*tot_examples),
                                 batch_size=args.val_batch_size,
-                                conflicting_buffer=tr_buf+val1_buf + val2_buf) 
+                                conflicting_buffer=tr_buf+val1_buf + val2_buf)
+    print(len(test_buf))
     return tr_buf, val1_buf, val2_buf, test_buf
     
     
 
 
-# In[4]:
+# In[ ]:
+
+
+def setup_env(env_name):
+    env = gym.make(env_name)
+    if "MiniGrid" in env_name:
+        action_space = range(3)
+        grid_size = env.grid_size - 2
+        num_directions = 4
+        tot_examples = grid_size**2 * num_directions * len(action_space)
+    else:
+        action_space = list(range(env.action_space.n))
+        grid_size = None
+        num_directions = None
+        tot_exampls = None
+    num_actions = len(action_space)
+    return env, action_space, grid_size, num_directions, tot_examples
+
+
+# In[ ]:
 
 
 def ss_train(writer, episode, tr_buf):
@@ -179,15 +211,15 @@ def ss_train(writer, episode, tr_buf):
         im_opt.step()
         #i += 1
     im_loss, im_acc = np.mean(im_losses), np.mean(im_accs)
-    writer.add_scalar("train/loss",im_loss,global_step=episode)
-    writer.add_scalar("train/acc",im_acc,global_step=episode)
+    writer.add_scalar("inv_model/tr_loss",im_loss,global_step=episode)
+    writer.add_scalar("inv_model/tr_acc",im_acc,global_step=episode)
     print("\tIM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
     return im_loss, im_acc
 
   
 
 
-# In[6]:
+# In[ ]:
 
 
 #train
@@ -195,29 +227,30 @@ if __name__ == "__main__":
     
     args = setup_args()
     writer = setup_dirs_logs(args)
-    env, action_space = setup_env(args.env_name)
+    env, action_space, grid_size, num_directions, tot_examples = setup_env(args.env_name)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     policy=lambda x0: np.random.choice(action_space)
-    tr_buf, val1_buf, val2_buf, test_buf = setup_tr_val_val_test(env, policy, convert_fxn)
+    tr_buf, val1_buf, val2_buf, test_buf = setup_tr_val_val_test(env, policy, convert_fxn, tot_examples)
     
     
     
     encoder, inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
-    enc_dict = {"inv_model":encoder, 
-                     "raw_pixel_enc":raw_pixel_enc, 
-                     "rand_proj": rand_lin_proj, 
-                     "rand_cnn":rand_cnn}
+    enc_dict = {"raw_pix":raw_pixel_enc,"rand_cnn":rand_cnn,
+                "rand_proj":rand_lin_proj,"inv_model":encoder }
     
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
+    qevs = QuantEvals(val1_buf, val2_buf, test_buf, writer,
+               grid_size,num_directions, args)
     global_steps = 0
-    for episode in range(args.num_episodes):
+    acc = 0 
+    episode = 0
+    while acc < 99.:
         print("episode %i"%episode)
         loss, acc = ss_train(writer, episode, tr_buf)
-        if acc == 100:
-            break
-        quant_evals({"inv_model":encoder},val1_buf, writer, args, episode)
-        global_steps += 1
-    eval_dict = quant_evals(enc_dict, val1_buf, writer, args, episode)
-    #qual_evals(enc_dict,args)
+        episode += 1
+        break
+
+    eval_dict = qevs.run_evals(enc_dict,num_hyperparams=5)
+
         
 
