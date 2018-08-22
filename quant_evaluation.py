@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[10]:
+# In[1]:
 
 
 import torch
@@ -13,12 +13,12 @@ import copy
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
-from utils import setup_env, mkstr, write_to_config_file, collect_one_data_point, convert_frame, classification_acc
+from utils import  mkstr, write_to_config_file, collect_one_data_point, convert_frame, classification_acc
 
 from functools import partial
 
 
-# In[3]:
+# In[2]:
 
 
 def eval_iter(encoder,val_buf):
@@ -28,7 +28,7 @@ def eval_iter(encoder,val_buf):
         yield batch, f0,f1
 
 
-# In[4]:
+# In[3]:
 
 
 class LinearClassifier(nn.Module):
@@ -60,11 +60,11 @@ class LinearClassifier(nn.Module):
         return self.fc.weight.abs()
 
 
-# In[13]:
+# In[4]:
 
 
 class QuantEval(object):
-    def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args):
+    def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args, writer):
         self.encoder = encoder
         self.encoder_name = encoder_name
         # train classifier on val1_buf, hyperparameter tune on val2 buf, test on test buf
@@ -74,6 +74,7 @@ class QuantEval(object):
         self.num_classes = num_classes
         self.predicted_value_name = predicted_value_name
         self.args = args
+        self.writer=writer
     
     
         self.clsf_template = partial(LinearClassifier,
@@ -94,17 +95,19 @@ class QuantEval(object):
         pred = self.clsf(f0)
         true = getattr(batch, name)
         loss = self.clsf.get_loss(pred, true)
+            
+            
         acc = classification_acc(logits=pred,true=true)
         if update_weights:
             loss.backward()
             self.opt.step()
-        return loss,acc
+        return float(loss.data),acc
     
     def one_epoch(self, buffer,mode="train"):
         update_weights = True if mode=="train" else False
         losses, accs = [], []
         for batch, f0, f1 in self.iter(self.encoder,buffer):
-            loss,acc = self.one_iter_update(batch, f0, update_weights=update_weights)
+            loss,acc = self.one_iter(batch, f0, update_weights=update_weights)
             losses.append(loss)
             accs.append(acc)
         return np.mean(losses), np.mean(accs), self.clsf.state_dict()
@@ -112,22 +115,42 @@ class QuantEval(object):
         
     def train(self,lr, lasso_coeff):
         self.clsf = self.clsf_template(lasso_coeff=lasso_coeff).to(self.args.device)
-        self.opt = self.opt_template(params = clsf.parameters(),lr=lr)
+        self.opt = self.opt_template(params = self.clsf.parameters(),lr=lr)
         prev_state_dict = None
-        for epoch in range(num_epochs):
+        state_dict = self.clsf.state_dict()
+        val_loss, tr_loss = np.inf, np.inf
+        epoch = 0
+        while val_loss <= tr_loss:
+            
+            prev_state_dict = copy.deepcopy(state_dict)
             self.clsf.train()
             tr_loss, tr_acc, state_dict = self.one_epoch(self.val1_buf, mode="train")
             
       
             self.clsf.eval()
             val_loss, val_acc, _ = self.one_epoch(self.val2_buf, mode="val")
- 
-            if val_loss > tr_loss:
-                break
-            prev_state_dict = copy.deepcopy(state_dict)
+            
+            self.write_acc_loss(tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch)
+            epoch+=1
         return tr_loss, tr_acc, val_loss, val_acc, prev_state_dict
+    
+    def write_acc_loss(self,tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch):
+        base_string_enc = "%s/%s"%(self.encoder_name,self.predicted_value_name)
+        tr_val_base_string = base_string_enc + "/lr=%0.4f,l1=%0.1f"%(lr, lasso_coeff)
+        loss_dict = dict(train=tr_loss, val=val_loss)
+        acc_dict = dict(train=tr_acc, val=val_acc)
+        self.writer.add_scalars(tr_val_base_string + "/loss",loss_dict,epoch)
+        self.writer.add_scalars(tr_val_base_string + "/acc",acc_dict,epoch)
+        
+        base_string_pred_value = "%s"%(self.predicted_value_name)
+        self.writer.add_scalars(base_string_pred_value + "/loss/tr",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):tr_loss}, epoch)
+        self.writer.add_scalars(base_string_pred_value + "/loss/val",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):val_loss}, epoch)
+        self.writer.add_scalars(base_string_pred_value + "/acc/tr",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):tr_acc}, epoch)
+        self.writer.add_scalars(base_string_pred_value + "/acc/val",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):val_acc}, epoch)
+        
         
     def hyperparameter_tune(self, hyperparam_choices_list):
+        
         best_val_loss = np.inf
         best_hyp = None
         best_state_dict = None
@@ -137,6 +160,7 @@ class QuantEval(object):
                 best_val_loss = val_loss
                 best_hyp = [lr,lasso_coeff]
                 best_state_dict = copy.deepcopy(state_dict)
+                
         return best_state_dict
     
     def test(self,state_dict):
@@ -148,126 +172,50 @@ class QuantEval(object):
  
 
 
-# In[35]:
-
-
-def run_quant_evals(encoder_dict, writer, args):
-    lrs = np.random.choice([10**i for i in range(-4,0,1)],size=10)
-    lasso_coeff = np.random.choice([i / 10. for i in range(1,11,1)],size=10)
-    hyperparams = zip(lrs,lasso_coeff)
-    predicted_value_names = ["x0_coord_x","x0_coord_y","x0_direction"]
-    eval_dict = {k:{} for k in predicted_value_names}
-    for encoder_name,encoder in encoder_dict.items():
-        for predicted_value_name in  predicted_value_names:
-            qev = QuantEval(encoder, encoder_name, val1_buf,val2_buf,
-                            test_buf, num_classes,
-                            predicted_value_name,
-                            args)
-            best_state_dict = qev.hyperparameter_tune(hyperparams)
-            acc = qev.test(best_state_dict)
-            eval_dict[predicted_value_name][encoder_name] = acc
-    
-    for predicted_value_name in  predicted_value_names:
-        writer.add_scalars("quant/eval/%s",eval_dict[predicted_value_name])
-    return eval_dict
-        
-        
-
-
-# In[45]:
-
-
-def quant_eval(encoder, val_buf, grid_size,args): 
-    # for minigrid env the grid is nxn but the dimension of places that you can actually go is n-2xn-2
-    
-    dir_clsf = LinearClassifier(num_classes=4,
-                            embed_len=encoder.embed_len).to(args.device)
-    x_clsf = LinearClassifier(num_classes=grid_size-2,
-                            embed_len=encoder.embed_len).to(args.device)
-    y_clsf = LinearClassifier(num_classes=grid_size-2,
-                            embed_len=encoder.embed_len).to(args.device)
-    
-    dir_opt, x_opt, y_opt = Adam(lr=0.1,params=dir_clsf.parameters()),                            Adam(lr=0.1,params=x_clsf.parameters()),                            Adam(lr=0.1,params=y_clsf.parameters())
-
-    x_accs = []
-    y_accs = []
-    d_accs = []
-    
-    for batch,f0,f1 in eval_iter(encoder,val_buf):
-
-
-        dir_clsf.zero_grad()
-        dir_pred = dir_clsf(f0)
-        dir_true = batch.x0_direction
-
-        dir_loss = dir_clsf.get_loss(dir_pred, dir_true)
-        d_accs.append(classification_acc(logits=dir_pred,true=dir_true))
-        dir_loss.backward()
-        dir_opt.step()
-                      
-                      
-        x_clsf.zero_grad()
-        y_clsf.zero_grad()
-        x_pred,y_pred = x_clsf(f0), y_clsf(f0)
-        # to make it go from 0
-        x_true, y_true = batch.x0_coord_x - 1,                        batch.x0_coord_y - 1
-        
-        
-
-        x_loss = x_clsf.get_loss(pred=x_pred,true=x_true)
-        y_loss = y_clsf.get_loss(pred=y_pred,true=y_true)
-        
-        x_accs.append(classification_acc(logits=x_pred,true=x_true))
-        y_accs.append(classification_acc(logits=y_pred,true=y_true))
-        x_loss.backward()
-        y_loss.backward()
-        x_opt.step()
-        y_opt.step()
-                    
-    x_acc, y_acc, d_acc = np.mean(x_accs), np.mean(y_accs), np.mean(d_accs)
-    return x_acc,y_acc, d_acc
-
-
 # In[5]:
 
 
-def quant_evals(encoder_dict, val_buf, writer, args, episode):
-    env = gym.make(args.env_name)
-    grid_size = env.grid_size
-    strs = ["x","y","d"]
-    eval_dict = {k:{"avg_acc":{}, "std":{}, "std_err":{}} for k in strs}
-    for name,encoder in encoder_dict.items():
-        x_accs,y_accs,d_accs = [], [], []
-        for i in range(args.eval_trials):
-            x_acc, y_acc,d_acc = quant_eval(encoder,val_buf, grid_size, args)
-            x_accs.append(x_acc)
-            y_accs.append(y_acc)
-            d_accs.append(d_acc)
-        
-        eval_dict["x"]["avg_acc"][name] = np.mean(x_accs)
-        eval_dict["y"]["avg_acc"][name] = np.mean(y_accs)
-        eval_dict["d"]["avg_acc"][name] = np.mean(d_accs)
-        eval_dict["x"]["std"][name] = np.std(x_accs)
-        eval_dict["y"]["std"][name] = np.std(y_accs)
-        eval_dict["d"]["std"][name] = np.std(d_accs)
-        for s in strs:
-            eval_dict[s]["std_err"][name] = eval_dict[s]["std"][name] / np.sqrt(args.eval_trials)
-
-        
-        print("\t%s\n\t\tPosition Prediction: \n\t\t\t x-acc: %9.3f%% +- %9.3f \n\t\t\t y-acc: %9.3f%% +- %9.3f"%
-              (name, eval_dict["x"]["avg_acc"][name], eval_dict["x"]["std_err"][name],
-               eval_dict["y"]["avg_acc"][name],eval_dict["y"]["std_err"][name]))
-        print("\t\tdirection Prediction: \n\t\t\t d-acc: %9.3f%% +- %9.3f"%
-            (eval_dict["d"]["avg_acc"][name], eval_dict["d"]["std_err"][name]))
-        
-    writer.add_scalars("eval/quant/x_pos_inf_acc",eval_dict["x"]["avg_acc"], global_step=episode)
-    writer.add_scalars("eval/quant/y_pos_inf_acc",eval_dict["y"]["avg_acc"], global_step=episode)
-    writer.add_scalars("eval/quant/d_pos_inf_acc",eval_dict["d"]["avg_acc"], global_step=episode)
-    writer.add_scalars("eval/quant/x_pos_inf_std_err",eval_dict["x"]["std_err"], global_step=episode)
-    writer.add_scalars("eval/quant/y_pos_inf_std_err",eval_dict["y"]["std_err"], global_step=episode)
-    writer.add_scalars("eval/quant/d_pos_inf_std_err",eval_dict["d"]["std_err"], global_step=episode)
-    return eval_dict
+class QuantEvals(object):
+    def __init__(self, val1_buf, val2_buf, test_buf, writer, grid_size,num_directions, args):
+        self.val1_buf = val1_buf
+        self.val2_buf = val2_buf
+        self.test_buf = test_buf
+        self.args = args
+        self.writer = writer
+        self.predicted_value_names = ["x0_coord_x","x0_coord_y","x0_direction"]
+        self.class_dict = dict(zip(self.predicted_value_names, [grid_size,grid_size,num_directions]))
     
+    def get_hyperparam_settings(self, num_hyperparams):
+        lrs = np.random.choice([10**i for i in range(-4,0,1)],size=num_hyperparams)
+        lasso_coeff = np.random.choice([i / 10. for i in range(1,11,1)],size=num_hyperparams)
+        hyperparams = zip(lrs,lasso_coeff)
+        return hyperparams
+    
+    def run_evals(self, encoder_dict, num_hyperparams=10):
+        hyperparams = list(self.get_hyperparam_settings(num_hyperparams))
+        eval_dict = {k:{} for k in self.predicted_value_names}
+        for encoder_name,encoder in encoder_dict.items():
+            for predicted_value_name in  self.predicted_value_names:
+                
+                qev = QuantEval(encoder, 
+                                encoder_name, 
+                                self.val1_buf,
+                                self.val2_buf,
+                                self.test_buf, 
+                                num_classes=self.class_dict[predicted_value_name],
+                                predicted_value_name=predicted_value_name,
+                                args=self.args, writer=self.writer)
+
+                best_state_dict = qev.hyperparameter_tune(hyperparams)
+                acc = qev.test(best_state_dict)
+                #print("%s, %s, %8.4f"%(qev.predicted_value_name,qev.encoder_name, acc))
+                eval_dict[qev.predicted_value_name][qev.encoder_name] = acc
+
+        for predicted_value_name in self.predicted_value_names:
+            self.writer.add_scalars("test/%s"%(predicted_value_name),eval_dict[predicted_value_name])
+        return eval_dict
+        
+        
 
 
 # In[3]:
