@@ -20,7 +20,7 @@ from functools import partial
 import copy
 
 
-# In[12]:
+# In[2]:
 
 
 class ReplayMemory(object):
@@ -91,7 +91,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[13]:
+# In[3]:
 
 
 class BufferFiller(object):
@@ -153,7 +153,7 @@ class BufferFiller(object):
  
 
 
-# In[15]:
+# In[4]:
 
 
 if __name__ == "__main__":
