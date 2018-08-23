@@ -74,6 +74,7 @@ class QuantEval(object):
         self.num_classes = num_classes
         self.predicted_value_name = predicted_value_name
         self.args = args
+        self.alpha = args.gen_loss_alpha
         self.writer=writer
     
     
@@ -118,10 +119,12 @@ class QuantEval(object):
         self.opt = self.opt_template(params = self.clsf.parameters(),lr=lr)
         prev_state_dict = None
         state_dict = self.clsf.state_dict()
-        val_loss, tr_loss = np.inf, np.inf
+        val_loss, tr_loss, min_val_loss = np.inf, np.inf, np.inf
+        gen_loss = 0.0
         epoch = 0
-        while val_loss <= tr_loss:
-            
+        
+        while gen_loss <= self.alpha: # this is the GL_alpha early stopping criterion from Prechelt, 1997
+            print(gen_loss)
             prev_state_dict = copy.deepcopy(state_dict)
             self.clsf.train()
             tr_loss, tr_acc, state_dict = self.one_epoch(self.val1_buf, mode="train")
@@ -129,8 +132,12 @@ class QuantEval(object):
       
             self.clsf.eval()
             val_loss, val_acc, _ = self.one_epoch(self.val2_buf, mode="val")
+            if val_loss < min_val_loss:
+                min_val_loss = copy.deepcopy(val_loss)
+            gen_loss = 100 * ((val_loss / min_val_loss) - 1)
             
             self.write_acc_loss(tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch)
+            
             epoch+=1
         return tr_loss, tr_acc, val_loss, val_acc, prev_state_dict
     
@@ -208,7 +215,7 @@ class QuantEvals(object):
 
                 best_state_dict = qev.hyperparameter_tune(hyperparams)
                 acc = qev.test(best_state_dict)
-                #print("%s, %s, %8.4f"%(qev.predicted_value_name,qev.encoder_name, acc))
+                print("%s, %s, %8.4f"%(qev.predicted_value_name,qev.encoder_name, acc))
                 eval_dict[qev.predicted_value_name][qev.encoder_name] = acc
 
         for predicted_value_name in self.predicted_value_names:

@@ -9,7 +9,7 @@ import random
 from collections import namedtuple
 import torch
 import numpy as np
-from utils import setup_env,convert_frames,convert_frame, rollout_iterator, plot_test,unused_datapoints_iterator
+from utils import convert_frames,convert_frame, rollout_iterator, plot_test,unused_datapoints_iterator
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid

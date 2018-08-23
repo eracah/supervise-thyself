@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[ ]:
+# In[2]:
 
 
 import custom_grids
@@ -30,10 +30,6 @@ from inverse_model import InverseModel
 from utils import mkstr,write_to_config_file,                collect_one_data_point, convert_frame, classification_acc
 from quant_evaluation import QuantEvals
 
-
-# In[2]:
-
-
 #env = gym.make('MiniGrid-Empty-32x32-v0')
 
 
@@ -42,10 +38,6 @@ from quant_evaluation import QuantEvals
 
 def parse_mg(name):
     return name.split("-")[2].split("x")[0]
-
-
-# In[ ]:
-
 
 def setup_args():
     tmp_argv = copy.deepcopy(sys.argv)
@@ -58,6 +50,7 @@ def setup_args():
 
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--lasso_coeff", type=float, default=0.1)
+    parser.add_argument("--gen_loss_alpha", type=float, default=1.0)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-16x16-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--val_batch_size",type=int,default=32)
@@ -94,10 +87,6 @@ def setup_args():
     args.output_dirname = output_dirname
     return args
 
-
-# In[ ]:
-
-
 def setup_dirs_logs(args):
     log_dir = './.logs/%s'%args.output_dirname
     writer = SummaryWriter(log_dir=log_dir)
@@ -125,6 +114,10 @@ def setup_models():
 
     return encoder,inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, 
     
+
+
+# In[4]:
+
 
 def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
 
@@ -155,7 +148,7 @@ def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
     
 
 
-# In[ ]:
+# In[5]:
 
 
 def setup_env(env_name):
@@ -174,7 +167,7 @@ def setup_env(env_name):
     return env, action_space, grid_size, num_directions, tot_examples
 
 
-# In[ ]:
+# In[6]:
 
 
 def ss_train(writer, episode, tr_buf):
@@ -222,6 +215,22 @@ def ss_train(writer, episode, tr_buf):
 # In[ ]:
 
 
+def train_inv_model():
+    im_opt = Adam(lr=args.lr, params=inv_model.parameters())
+
+    global_steps = 0
+    acc = 0 
+    episode = 0
+    while acc < 99.:
+        print("episode %i"%episode)
+        loss, acc = ss_train(writer, episode, tr_buf)
+        episode += 1
+        break
+
+
+# In[7]:
+
+
 #train
 if __name__ == "__main__":
     
@@ -238,17 +247,9 @@ if __name__ == "__main__":
     enc_dict = {"raw_pix":raw_pixel_enc,"rand_cnn":rand_cnn,
                 "rand_proj":rand_lin_proj,"inv_model":encoder }
     
-    im_opt = Adam(lr=args.lr, params=inv_model.parameters())
+    #train_inv_model()
     qevs = QuantEvals(val1_buf, val2_buf, test_buf, writer,
                grid_size,num_directions, args)
-    global_steps = 0
-    acc = 0 
-    episode = 0
-    while acc < 99.:
-        print("episode %i"%episode)
-        loss, acc = ss_train(writer, episode, tr_buf)
-        episode += 1
-        break
 
     eval_dict = qevs.run_evals(enc_dict,num_hyperparams=5)
 
