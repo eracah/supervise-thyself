@@ -57,13 +57,13 @@ class LinearClassifier(nn.Module):
     
     @property
     def importance_matrix(self):
-        return self.fc.weight.abs()
+        return self.fc.weight.abs().transpose(1,0).data
 
 
-# In[4]:
+# In[26]:
 
 
-class QuantEval(object):
+class QuantEval(object): #it's a god class
     def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args, writer):
         self.encoder = encoder
         self.encoder_name = encoder_name
@@ -75,6 +75,7 @@ class QuantEval(object):
         self.predicted_value_name = predicted_value_name
         self.args = args
         self.alpha = args.gen_loss_alpha
+        self.max_epochs = args.max_quant_eval_epochs
         self.writer=writer
     
     
@@ -123,8 +124,8 @@ class QuantEval(object):
         gen_loss = 0.0
         epoch = 0
         
-        while gen_loss <= self.alpha: # this is the GL_alpha early stopping criterion from Prechelt, 1997
-            print(gen_loss)
+        while gen_loss <= self.alpha and epoch < self.max_epochs: # this is the GL_alpha early stopping criterion from Prechelt, 1997
+            #print(epoch, gen_loss)
             prev_state_dict = copy.deepcopy(state_dict)
             self.clsf.train()
             tr_loss, tr_acc, state_dict = self.one_epoch(self.val1_buf, mode="train")
@@ -139,6 +140,7 @@ class QuantEval(object):
             self.write_acc_loss(tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch)
             
             epoch+=1
+        print("epochs: ", epoch)
         return tr_loss, tr_acc, val_loss, val_acc, prev_state_dict
     
     def write_acc_loss(self,tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch):
@@ -155,31 +157,108 @@ class QuantEval(object):
         self.writer.add_scalars(base_string_pred_value + "/acc/tr",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):tr_acc}, epoch)
         self.writer.add_scalars(base_string_pred_value + "/acc/val",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):val_acc}, epoch)
         
+    def search1d(self,name,hyp_to_vary, train_fxn):
+        best_val_loss = np.inf
+        best_hyp = None
+        best_state_dict = None
+        for hyp in hyp_to_vary:
+            print(name, " = ", hyp_to_vary)
+            tr_loss, tr_acc, val_loss, val_acc, state_dict = train_fxn(hyp_to_vary)
+            print(val_loss)
+            if val_loss < best_val_loss:
+                best_val_loss = copy.deepcopy(val_loss)
+                best_lr = copy.deepcopy(lr)
+                best_state_dict = copy.deepcopy(state_dict)
         
-    def hyperparameter_tune(self, hyperparam_choices_list):
+    
+    def hyperparameter_tune(self, lrs,lasso_coeffs):
         
         best_val_loss = np.inf
         best_hyp = None
         best_state_dict = None
-        for lr, lasso_coeff in hyperparam_choices_list:
-            tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr,lasso_coeff)
+        for lr in lrs:
+            print("lr = ",lr)
+            tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr,lasso_coeff=0.0)
+            print(val_loss)
             if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_hyp = [lr,lasso_coeff]
+                best_val_loss = copy.deepcopy(val_loss)
+                best_lr = copy.deepcopy(lr)
+                #best_state_dict = copy.deepcopy(state_dict)
+        
+        print("best lr = ", best_lr)
+        
+        best_val_loss = np.inf
+        best_hyp = None
+        best_state_dict = None
+        for lasso_coeff in lasso_coeffs:
+            print("lasso_ceff = ",lasso_coeff)
+            tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr=best_lr,lasso_coeff=lasso_coeff)
+            print(val_loss)
+            if val_loss < best_val_loss:
+                best_val_loss = copy.deepcopy(val_loss)
+                best_l1_coeff = copy.deepcopy(lasso_coeff)
                 best_state_dict = copy.deepcopy(state_dict)
+                
+        print("best lr = ",best_lr, " best l1_coeff = ", best_l1_coeff)
+        
                 
         return best_state_dict
     
     def test(self,state_dict):
-        # lasso coeff doesn't matter for accuracy
         self.clsf = self.clsf_template(lasso_coeff=0.).to(self.args.device)
+        self.clsf.load_state_dict(state_dict)
+        inform = self._test_informativeness()
+        disent  = self._test_disentanglement()
+        compl = self._test_completeness()
+        return disent, compl, inform
+        
+        
+    
+    def _test_informativeness(self):
         _, acc, _ = self.one_epoch(self.test_buf, mode="test")
-        return acc
+        return acc / 100.
+    
+    def _test_disentanglement(self):
+        R = self.clsf.importance_matrix
+        K = R.size(1)
+
+        P = R / R.sum(dim=1,keepdim=True)
+
+        # change of base Rule
+        log_kP = torch.log10(P) / torch.log10(K * torch.ones_like(R))
+
+        H = -(P * log_kP).sum(dim=1)
+
+        D = 1 - H
+
+
+        ro = R.sum(dim=1) / R.sum()
+
+        disentanglement = (ro * D).sum()
+        return float(disentanglement)
+    
+    
+    def _test_completeness(self):
+        R = self.clsf.importance_matrix
+        D = R.size(0)
+
+        Ps = R / R.sum(dim=0,keepdim=True)
+
+        # change of base Rule
+        log_dPs = torch.log10(Ps) / torch.log10(D * torch.ones_like(R))
+
+        Hd = -(Ps * log_dPs).sum(dim=0)
+
+        C = 1 - Hd
+        return float(C.mean())
+
+    
+    
         
  
 
 
-# In[5]:
+# In[27]:
 
 
 class QuantEvals(object):
@@ -192,18 +271,17 @@ class QuantEvals(object):
         self.predicted_value_names = ["x0_coord_x","x0_coord_y","x0_direction"]
         self.class_dict = dict(zip(self.predicted_value_names, [grid_size,grid_size,num_directions]))
     
-    def get_hyperparam_settings(self, num_hyperparams):
-        lrs = np.random.choice([10**i for i in range(-4,0,1)],size=num_hyperparams)
-        lasso_coeff = np.random.choice([i / 10. for i in range(1,11,1)],size=num_hyperparams)
-        hyperparams = zip(lrs,lasso_coeff)
-        return hyperparams
+    def get_hyperparam_settings(self):
+        lrs = [10**i for i in range(-4,0,1)]
+        lasso_coeffs = np.linspace(0,1,4)
+        return lrs, lasso_coeffs
     
-    def run_evals(self, encoder_dict, num_hyperparams=10):
-        hyperparams = list(self.get_hyperparam_settings(num_hyperparams))
+    def run_evals(self, encoder_dict):
+        lrs, l1_coeffs = self.get_hyperparam_settings()
         eval_dict = {k:{} for k in self.predicted_value_names}
         for encoder_name,encoder in encoder_dict.items():
             for predicted_value_name in  self.predicted_value_names:
-                
+                print("%s, %s"%(predicted_value_name,encoder_name))
                 qev = QuantEval(encoder, 
                                 encoder_name, 
                                 self.val1_buf,
@@ -213,10 +291,10 @@ class QuantEvals(object):
                                 predicted_value_name=predicted_value_name,
                                 args=self.args, writer=self.writer)
 
-                best_state_dict = qev.hyperparameter_tune(hyperparams)
-                acc = qev.test(best_state_dict)
-                print("%s, %s, %8.4f"%(qev.predicted_value_name,qev.encoder_name, acc))
-                eval_dict[qev.predicted_value_name][qev.encoder_name] = acc
+                best_state_dict = qev.hyperparameter_tune(lrs, l1_coeffs)
+                disent, compl, inform = qev.test(best_state_dict)
+                print("%s, %s, disent = %8.4f, compl = %8.4f, inform = %8.4f"%(qev.predicted_value_name,qev.encoder_name, disent, compl, inform))
+                eval_dict[qev.predicted_value_name][qev.encoder_name] = inform
 
         for predicted_value_name in self.predicted_value_names:
             self.writer.add_scalars("test/%s"%(predicted_value_name),eval_dict[predicted_value_name])
