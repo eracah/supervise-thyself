@@ -24,7 +24,7 @@ from functools import partial
 def eval_iter(encoder,val_buf):
     for batch in val_buf:
         f0 = encoder(batch.x0).detach()
-        f1 = encoder(batch.x1).detach()
+        f1 = encoder(batch.x1).detach() 
         yield batch, f0,f1
 
 
@@ -60,7 +60,7 @@ class LinearClassifier(nn.Module):
         return self.fc.weight.abs().transpose(1,0).data
 
 
-# In[26]:
+# In[4]:
 
 
 class QuantEval(object): #it's a god class
@@ -140,7 +140,7 @@ class QuantEval(object): #it's a god class
             self.write_acc_loss(tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch)
             
             epoch+=1
-        print("epochs: ", epoch)
+
         return tr_loss, tr_acc, val_loss, val_acc, prev_state_dict
     
     def write_acc_loss(self,tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch):
@@ -162,9 +162,9 @@ class QuantEval(object): #it's a god class
         best_hyp = None
         best_state_dict = None
         for hyp in hyp_to_vary:
-            print(name, " = ", hyp_to_vary)
+            #print(name, " = ", hyp_to_vary)
             tr_loss, tr_acc, val_loss, val_acc, state_dict = train_fxn(hyp_to_vary)
-            print(val_loss)
+            #print(val_loss)
             if val_loss < best_val_loss:
                 best_val_loss = copy.deepcopy(val_loss)
                 best_lr = copy.deepcopy(lr)
@@ -177,32 +177,29 @@ class QuantEval(object): #it's a god class
         best_hyp = None
         best_state_dict = None
         for lr in lrs:
-            print("lr = ",lr)
             tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr,lasso_coeff=0.0)
-            print(val_loss)
             if val_loss < best_val_loss:
                 best_val_loss = copy.deepcopy(val_loss)
                 best_lr = copy.deepcopy(lr)
                 #best_state_dict = copy.deepcopy(state_dict)
         
-        print("best lr = ", best_lr)
+
         
         best_val_loss = np.inf
         best_hyp = None
         best_state_dict = None
         for lasso_coeff in lasso_coeffs:
-            print("lasso_ceff = ",lasso_coeff)
             tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr=best_lr,lasso_coeff=lasso_coeff)
-            print(val_loss)
+            #print(val_loss)
             if val_loss < best_val_loss:
                 best_val_loss = copy.deepcopy(val_loss)
                 best_l1_coeff = copy.deepcopy(lasso_coeff)
                 best_state_dict = copy.deepcopy(state_dict)
                 
-        print("best lr = ",best_lr, " best l1_coeff = ", best_l1_coeff)
+        #print("best lr = ",best_lr, " best l1_coeff = ", best_l1_coeff)
         
                 
-        return best_state_dict
+        return best_state_dict, best_lr, best_l1_coeff
     
     def test(self,state_dict):
         self.clsf = self.clsf_template(lasso_coeff=0.).to(self.args.device)
@@ -216,7 +213,7 @@ class QuantEval(object): #it's a god class
     
     def _test_informativeness(self):
         _, acc, _ = self.one_epoch(self.test_buf, mode="test")
-        return acc / 100.
+        return acc
     
     def _test_disentanglement(self):
         R = self.clsf.importance_matrix
@@ -258,7 +255,7 @@ class QuantEval(object): #it's a god class
  
 
 
-# In[27]:
+# In[5]:
 
 
 class QuantEvals(object):
@@ -279,9 +276,9 @@ class QuantEvals(object):
     def run_evals(self, encoder_dict):
         lrs, l1_coeffs = self.get_hyperparam_settings()
         eval_dict = {k:{} for k in self.predicted_value_names}
-        for encoder_name,encoder in encoder_dict.items():
-            for predicted_value_name in  self.predicted_value_names:
-                print("%s, %s"%(predicted_value_name,encoder_name))
+        for predicted_value_name in  self.predicted_value_names:
+            self.print_latex_table_header(predicted_value_name)
+            for encoder_name,encoder in encoder_dict.items():                
                 qev = QuantEval(encoder, 
                                 encoder_name, 
                                 self.val1_buf,
@@ -291,15 +288,36 @@ class QuantEvals(object):
                                 predicted_value_name=predicted_value_name,
                                 args=self.args, writer=self.writer)
 
-                best_state_dict = qev.hyperparameter_tune(lrs, l1_coeffs)
+                best_state_dict, best_lr, best_l1_coeff = qev.hyperparameter_tune(lrs, l1_coeffs)
                 disent, compl, inform = qev.test(best_state_dict)
-                print("%s, %s, disent = %8.4f, compl = %8.4f, inform = %8.4f"%(qev.predicted_value_name,qev.encoder_name, disent, compl, inform))
                 eval_dict[qev.predicted_value_name][qev.encoder_name] = inform
-
+                self.print_latex_table_row(qev.encoder_name,best_lr, best_l1_coeff, disent, compl, inform)
+            self.print_latex_table_footer()
         for predicted_value_name in self.predicted_value_names:
             self.writer.add_scalars("test/%s"%(predicted_value_name),eval_dict[predicted_value_name])
         return eval_dict
+    
+    
+    
+    def print_latex_table_header(self, predicted_value_name ):
+        print("\\begin{table}[h]")
+        print("\caption{Usefulness results for %s for %s using lasso classifier}"%(predicted_value_name.replace("_","-"), self.args.env_name))
+        print("\label{sample-table}")
+        print("\\begin{center}")
+        print("\\begin{tabular}{llllll}")
+        print("\multicolumn{1}{c}{\\bf Code}  &\multicolumn{1}{c}{\\bf Best LR} &\multicolumn{1}{c}{\\bf Best L1} &\multicolumn{1}{c}{\\bf Disent.} &\multicolumn{1}{c}{\\bf Compl.} &\multicolumn{1}{c}{\\bf Inform.}")
+        print(" \\\ \hline \\\ ")
         
+    def print_latex_table_row(self,encoder_name,best_lr, best_l1_coeff, disent, compl, inform):
+        print("%s & %s & %0.2f & %0.2f & %0.2f & %0.2f \\\ "%(encoder_name.replace("_","-"),str(best_lr), best_l1_coeff, disent, compl, inform))
+        
+    def print_latex_table_footer(self):
+        print("\hline")
+        print("\end{tabular}")
+        print("\end{center}")
+        print("\end{table}")
+
+            
         
 
 
