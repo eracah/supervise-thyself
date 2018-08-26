@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 import custom_grids
@@ -32,10 +32,6 @@ from quant_evaluation import QuantEvals
 
 #env = gym.make('MiniGrid-Empty-32x32-v0')
 
-
-# In[3]:
-
-
 def parse_mg(name):
     return name.split("-")[2].split("x")[0]
 
@@ -50,8 +46,9 @@ def setup_args():
 
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--lasso_coeff", type=float, default=0.1)
-    parser.add_argument("--gen_loss_alpha", type=float, default=1.0)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-16x16-v0'),
+    parser.add_argument("--max_quant_eval_epochs", type=int, default=25)
+    parser.add_argument("--gen_loss_alpha", type=float, default=0.4)
+    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--val_batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
@@ -72,12 +69,7 @@ def setup_args():
 
     sys.argv = tmp_argv
     if test_notebook:
-        args.init_buffer_size = 100
-        args.eval_init_buffer_size = 15
-        args.val_batch_size = 5
-        args.batch_size = 32
-        args.num_val_batches = 2
-        args.num_episodes = 1
+        args.batch_size = 5
         #args.online=True
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     mstr = partial(mkstr,args=args)
@@ -115,10 +107,6 @@ def setup_models():
     return encoder,inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, 
     
 
-
-# In[4]:
-
-
 def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
 
     
@@ -147,10 +135,6 @@ def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
     
     
 
-
-# In[5]:
-
-
 def setup_env(env_name):
     env = gym.make(env_name)
     if "MiniGrid" in env_name:
@@ -166,32 +150,10 @@ def setup_env(env_name):
     num_actions = len(action_space)
     return env, action_space, grid_size, num_directions, tot_examples
 
-
-# In[6]:
-
-
 def ss_train(writer, episode, tr_buf):
     im_losses, im_accs = [], []
     done = False
     state = env.reset()
-    #i = 0
-    #while not done:
-        
-#         im_opt.zero_grad()
-#         if args.collect_data:
-#             policy = lambda x0: np.random.choice(action_space)
-#             transition = collect_one_data_point(convert_fxn=convert_fxn,
-#                                                           env=env,
-#                                                           policy=policy,
-#                                                           with_agent_pos=with_agent_pos,
-#                                                         with_agent_direction=with_agent_direction)
-
-
-#             done = transition.done
-#             replay_buffer.push(*transition)
-#         else:
-        #done = True if i >= 2 else False
-        #trans = tr_buf.sample(args.batch_size)
     for trans in tr_buf:
         a_pred = inv_model(trans.x0,trans.x1)
         im_loss = nn.CrossEntropyLoss()(a_pred,trans.a)
@@ -211,10 +173,6 @@ def ss_train(writer, episode, tr_buf):
 
   
 
-
-# In[ ]:
-
-
 def train_inv_model():
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
 
@@ -228,7 +186,7 @@ def train_inv_model():
         break
 
 
-# In[7]:
+# In[2]:
 
 
 #train
@@ -244,14 +202,13 @@ if __name__ == "__main__":
     
     
     encoder, inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
-    enc_dict = {"raw_pix":raw_pixel_enc,"rand_cnn":rand_cnn,
-                "rand_proj":rand_lin_proj,"inv_model":encoder }
+    enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
     
     #train_inv_model()
     qevs = QuantEvals(val1_buf, val2_buf, test_buf, writer,
                grid_size,num_directions, args)
 
-    eval_dict = qevs.run_evals(enc_dict,num_hyperparams=5)
+    eval_dict = qevs.run_evals(enc_dict)
 
         
 
