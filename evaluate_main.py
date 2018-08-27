@@ -27,13 +27,14 @@ from replay_buffer import BufferFiller
 from base_encoder import Encoder
 from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from inverse_model import InverseModel
-from utils import mkstr,write_to_config_file,                collect_one_data_point, convert_frame, classification_acc
+from utils import mkstr,write_to_config_file,                collect_one_data_point,                convert_frame, classification_acc,                setup_env, setup_dirs_logs,                parse_minigrid_env_name
 from quant_evaluation import QuantEvals
 
-#env = gym.make('MiniGrid-Empty-32x32-v0')
 
-def parse_mg(name):
-    return name.split("-")[2].split("x")[0]
+# In[8]:
+
+
+
 
 def setup_args():
     tmp_argv = copy.deepcopy(sys.argv)
@@ -46,7 +47,7 @@ def setup_args():
 
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--lasso_coeff", type=float, default=0.1)
-    parser.add_argument("--max_quant_eval_epochs", type=int, default=25)
+    parser.add_argument("--max_quant_eval_epochs", type=int, default=50)
     parser.add_argument("--gen_loss_alpha", type=float, default=0.4)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
@@ -73,29 +74,19 @@ def setup_args():
         #args.online=True
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     mstr = partial(mkstr,args=args)
-    output_dirname = ("nb_" if test_notebook else "") + "_".join(["e%s"%parse_mg(args.env_name),
+    output_dirname = ("nb_" if test_notebook else "") + "_".join(["e%s"%parse_minigrid_env_name(args.env_name),
                                                                         "r%i"%(args.resize_to[0])
                                                                        ])
     args.output_dirname = output_dirname
     return args
 
-def setup_dirs_logs(args):
-    log_dir = './.logs/%s'%args.output_dirname
-    writer = SummaryWriter(log_dir=log_dir)
-    write_to_config_file(args.__dict__, log_dir)
 
-    return writer
 
+# In[10]:
 
 
 def setup_models():
-    encoder = Encoder(in_ch=3,
-                      im_wh=args.resize_to,
-                      h_ch=args.hidden_width,
-                      embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(args.device)
 
-    inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
     raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device)
     rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device)
     rand_cnn = Encoder(in_ch=3,
@@ -104,8 +95,12 @@ def setup_models():
                       embed_len=args.embed_len,
                       batch_norm=args.batch_norm).to(args.device)
 
-    return encoder,inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, 
+    return raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, encoder,inv_model, 
     
+
+
+# In[11]:
+
 
 def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
 
@@ -133,60 +128,10 @@ def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
     print(len(test_buf))
     return tr_buf, val1_buf, val2_buf, test_buf
     
-    
-
-def setup_env(env_name):
-    env = gym.make(env_name)
-    if "MiniGrid" in env_name:
-        action_space = range(3)
-        grid_size = env.grid_size - 2
-        num_directions = 4
-        tot_examples = grid_size**2 * num_directions * len(action_space)
-    else:
-        action_space = list(range(env.action_space.n))
-        grid_size = None
-        num_directions = None
-        tot_exampls = None
-    num_actions = len(action_space)
-    return env, action_space, grid_size, num_directions, tot_examples
-
-def ss_train(writer, episode, tr_buf):
-    im_losses, im_accs = [], []
-    done = False
-    state = env.reset()
-    for trans in tr_buf:
-        a_pred = inv_model(trans.x0,trans.x1)
-        im_loss = nn.CrossEntropyLoss()(a_pred,trans.a)
-        im_losses.append(float(im_loss.data))
-
-        acc = classification_acc(logits=a_pred,true=trans.a)
-        im_accs.append(acc)
-
-        im_loss.backward()
-        im_opt.step()
-        #i += 1
-    im_loss, im_acc = np.mean(im_losses), np.mean(im_accs)
-    writer.add_scalar("inv_model/tr_loss",im_loss,global_step=episode)
-    writer.add_scalar("inv_model/tr_acc",im_acc,global_step=episode)
-    print("\tIM-Loss: %8.4f \n\tEpisode IM-Acc: %9.3f%%"%(im_loss, im_acc))
-    return im_loss, im_acc
-
-  
-
-def train_inv_model():
-    im_opt = Adam(lr=args.lr, params=inv_model.parameters())
-
-    global_steps = 0
-    acc = 0 
-    episode = 0
-    while acc < 99.:
-        print("episode %i"%episode)
-        loss, acc = ss_train(writer, episode, tr_buf)
-        episode += 1
-        break
+ 
 
 
-# In[2]:
+# In[12]:
 
 
 #train
@@ -201,12 +146,12 @@ if __name__ == "__main__":
     
     
     
-    encoder, inv_model, raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
+    raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
     enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
-    
-    #train_inv_model()
     qevs = QuantEvals(val1_buf, val2_buf, test_buf, writer,
                grid_size,num_directions, args)
+    #train_inv_model()
+
 
     eval_dict = qevs.run_evals(enc_dict)
 
