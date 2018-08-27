@@ -269,7 +269,7 @@ class QuantEvals(object):
         self.class_dict = dict(zip(self.predicted_value_names, [grid_size,grid_size,num_directions]))
     
     def get_hyperparam_settings(self):
-        lrs = [10**i for i in range(-4,0,1)]
+        lrs = [10**i for i in range(-5,0,1)]
         lasso_coeffs = np.linspace(0,1,4)
         return lrs, lasso_coeffs
     
