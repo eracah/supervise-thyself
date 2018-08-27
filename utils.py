@@ -26,6 +26,44 @@ from pathlib import Path
 from collections import namedtuple
 from itertools import product
 import random
+from tensorboardX import SummaryWriter
+
+
+# In[ ]:
+
+
+def parse_minigrid_env_name(name):
+    return name.split("-")[2].split("x")[0]
+
+
+# In[ ]:
+
+
+def setup_dirs_logs(args):
+    log_dir = './.logs/%s'%args.output_dirname
+    writer = SummaryWriter(log_dir=log_dir)
+    write_to_config_file(args.__dict__, log_dir)
+
+    return writer
+
+
+# In[ ]:
+
+
+def setup_env(env_name):
+    env = gym.make(env_name)
+    if "MiniGrid" in env_name:
+        action_space = range(3)
+        grid_size = env.grid_size - 2
+        num_directions = 4
+        tot_examples = grid_size**2 * num_directions * len(action_space)
+    else:
+        action_space = list(range(env.action_space.n))
+        grid_size = None
+        num_directions = None
+        tot_exampls = None
+    num_actions = len(action_space)
+    return env, action_space, grid_size, num_directions, tot_examples
 
 
 # In[2]:
