@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 import custom_grids
@@ -29,7 +29,7 @@ import random
 from tensorboardX import SummaryWriter
 
 
-# In[15]:
+# In[3]:
 
 
 def setup_dirs_logs(args, exp_name):
@@ -42,14 +42,14 @@ def setup_dirs_logs(args, exp_name):
     return writer, model_dir
 
 
-# In[ ]:
+# In[4]:
 
 
 def parse_minigrid_env_name(name):
     return name.split("-")[2].split("x")[0]
 
 
-# In[ ]:
+# In[5]:
 
 
 def setup_env(env_name):
@@ -68,7 +68,7 @@ def setup_env(env_name):
     return env, action_space, grid_size, num_directions, tot_examples
 
 
-# In[2]:
+# In[6]:
 
 
 def bin_direction(direction):
@@ -83,7 +83,7 @@ def bin_direction(direction):
     return binned_direction
 
 
-# In[3]:
+# In[7]:
 
 
 def unbin_direction(binned_direction):
@@ -99,7 +99,7 @@ def unbin_direction(binned_direction):
     
 
 
-# In[1]:
+# In[8]:
 
 
 def classification_acc(logits,true):
@@ -108,7 +108,7 @@ def classification_acc(logits,true):
     return acc
 
 
-# In[6]:
+# In[9]:
 
 
 
@@ -136,7 +136,7 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
         
 
 
-# In[7]:
+# In[10]:
 
 
 def get_trans_tuple():
@@ -152,7 +152,7 @@ def get_trans_tuple():
         
 
 
-# In[8]:
+# In[11]:
 
 
 def create_zip_all(grid_size=(6,6),num_directions=4, num_actions=3):
@@ -164,7 +164,7 @@ def create_zip_all(grid_size=(6,6),num_directions=4, num_actions=3):
     
 
 
-# In[9]:
+# In[12]:
 
 
 def collect_one_unique_data_point(old_coords,old_directions,old_actions):
@@ -172,7 +172,7 @@ def collect_one_unique_data_point(old_coords,old_directions,old_actions):
     return old_zip_all
 
 
-# In[10]:
+# In[13]:
 
 
 def collect_datapoint(x0, action, env, convert_fxn):
@@ -190,8 +190,8 @@ def collect_datapoint(x0, action, env, convert_fxn):
     x1 = convert_fxn(env.render("rgb_array"))
     trans_list =  [x0,x1,action,reward,done]
     
-
-    x1_coord_x, x1_coord_y = int(env.agent_pos[0]), int(env.agent_pos[1])
+    # to make the coords start at 0
+    x1_coord_x, x1_coord_y = int(env.agent_pos[0]) - 1, int(env.agent_pos[1]) - 1
     trans_list.extend([x0_coord_x, x0_coord_y,x1_coord_x, x1_coord_y])
 
     x1_direction = bin_direction(env.get_dir_vec())
@@ -202,7 +202,7 @@ def collect_datapoint(x0, action, env, convert_fxn):
     
 
 
-# In[11]:
+# In[14]:
 
 
 def get_desired_direction(env,desired_direction):
@@ -253,46 +253,64 @@ def rollout_iterator(env=gym.make("MiniGrid-Empty-6x6-v0"),
         yield transition
 
 
-# In[12]:
+# In[29]:
 
 
-def get_list_from_buffers(other_buffer,*keys):
+def get_zipped_list_from_buffers(other_buffer,keys=["x0_coord_x",
+                                        "x0_coord_y",
+                                        "x0_direction",
+                                        "a"]):
     Transition = other_buffer.Transition
     full_buffer_mem = other_buffer.memory
     one_big_trans = Transition(*zip(*full_buffer_mem))
     ret = [one_big_trans._asdict()[key] for key in keys ]
-    return ret
+    return zip(*ret)
 
 
-# In[13]:
+# In[30]:
 
 
-def unused_datapoints_iterator(other_buffer,env=gym.make("MiniGrid-Empty-16x16-v0"),
-                               convert_fxn=convert_frame):
-
-    all_zip = create_zip_all(grid_size=(env.grid_size, env.grid_size))
+def get_unused_datapoints(other_buffer,env=gym.make("MiniGrid-Empty-16x16-v0")):
+    all_zip = create_zip_all(grid_size=(env.grid_size -2, env.grid_size-2))
     
-    used_coord_x,    used_coord_y,    used_directions,    used_actions = get_list_from_buffers(other_buffer,
-                                        "x0_coord_x",
+    used_zip = get_zipped_list_from_buffers(other_buffer,
+                                        ["x0_coord_x",
                                         "x0_coord_y",
                                         "x0_direction",
-                                        "a")
-    
-    #return used_coords
-    used_zip = zip(used_coord_x,used_coord_y,used_directions,used_actions)
-
+                                        "a"])
     used_set = set(used_zip)
 
     all_set = set(all_zip)
 
     unused = all_set.difference(used_set)
-    while len(unused) > 0:
-        coord_x,coord_y, direction, action = unused.pop()
-        transition = collect_specific_datapoint(env,(coord_x,coord_y),direction,action,convert_fxn=convert_fxn)
+    
+    return unused
+    
+    
+
+
+# In[31]:
+
+
+def list_iterator(list_of_points,env, convert_fxn):
+    for (coord_x,coord_y, direction, action) in list_of_points:
+        #print(coord_x + 1 ,coord_y + 1)
+        transition = collect_specific_datapoint(env,(coord_x + 1 ,coord_y+ 1),direction,action,convert_fxn=convert_fxn)
         yield transition
+    
 
 
-# In[14]:
+# In[28]:
+
+
+def get_unused_datapoints_iterator(other_buffer,env=gym.make("MiniGrid-Empty-16x16-v0"),
+                               convert_fxn=convert_frame):
+
+    unused = get_unused_datapoints(other_buffer, env)
+    return partial(list_iterator, list_of_points=unused,env=env, convert_fxn=convert_fxn)
+
+
+# In[18]:
 
 
 def mkstr(key,args={}):
@@ -300,7 +318,7 @@ def mkstr(key,args={}):
     return "=".join([key,str(d[key])])
 
 
-# In[15]:
+# In[19]:
 
 
 def initialize_weights(self):
@@ -315,7 +333,7 @@ def initialize_weights(self):
             m.bias.data.zero_()
 
 
-# In[16]:
+# In[20]:
 
 
 def write_ims(index,rows,ims,name, iter_):
@@ -325,7 +343,7 @@ def write_ims(index,rows,ims,name, iter_):
     
 
 
-# In[17]:
+# In[21]:
 
 
 def write_to_config_file(dict_,log_dir):
@@ -336,7 +354,7 @@ def write_to_config_file(dict_,log_dir):
     
 
 
-# In[18]:
+# In[22]:
 
 
 def save_incorrect_examples(y,action_guess,x0,x1,iter_):
@@ -373,25 +391,6 @@ def plot_test(x0s,x1s,ys,rs, label_list):
         for i in range(x0s.size()[0]):
             plot(x0s[i],x1s[i],ys[i],i)
     plt.show()
-
-
-# In[20]:
-
-
-def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
-    rewards = []
-    with torch.no_grad():
-        for ep in range(k):
-            done = False
-            env.reset()
-            cum_reward = 0
-            while not done:
-                _,_,_,reward, done = collect_one_data_point(convert_fxn=convert_fxn,
-                                                            env=env,
-                                                            policy=policy)
-                cum_reward += float(reward)
-            rewards.append(cum_reward)
-        return np.mean(rewards), rewards
 
 
 # In[2]:
