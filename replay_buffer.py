@@ -9,7 +9,7 @@ import random
 from collections import namedtuple
 import torch
 import numpy as np
-from utils import convert_frames,convert_frame, rollout_iterator, plot_test,unused_datapoints_iterator
+from utils import convert_frames,convert_frame,list_iterator,rollout_iterator,                  plot_test,get_unused_datapoints_iterator,get_zipped_list_from_buffers
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
@@ -35,7 +35,6 @@ class ReplayMemory(object):
         
         self.Transition = get_trans_tuple()
             
-
     def __add__(self,other_buffer):
         self.memory = self.memory + other_buffer.memory
         return self
@@ -97,7 +96,7 @@ class ReplayMemory(object):
 class BufferFiller(object):
     def __init__(self,
                  convert_fxn = partial(convert_frame, resize_to=(64,64)),
-                 env = gym.make("MiniGrid-Empty-16x16-v0"),
+                 env = gym.make("MiniGrid-Empty-8x8-v0"),
                  policy= lambda x0: np.random.choice(3)):
         self.env = env
         self.policy = policy
@@ -108,15 +107,18 @@ class BufferFiller(object):
     def create_and_fill(self,size=1000,
                         batch_size=32,
                         capacity=10000, 
-                        conflicting_buffer=None):
+                        conflicting_buffer=None,
+                        list_of_points=None ):
 
         buffer = ReplayMemory(capacity=capacity,
                                    batch_size=batch_size)
 
-        if not conflicting_buffer:
-            buffer = self.fill_buffer_with_rollouts(buffer,size)
-        else:
+        if conflicting_buffer:
             buffer = self.fill_buffer_with_unique_transitions(conflicting_buffer,buffer,size)
+        elif list_of_points:
+            buffer = self.fill_buffer_with_list(buffer,list_of_points, size)
+        else:    
+            buffer = self.fill_buffer_with_rollouts(buffer, size)
 
         return buffer
     
@@ -127,39 +129,37 @@ class BufferFiller(object):
         buffer = self.fill_buffer_with_iterator(buffer,size,iterator)
         return buffer  
 
-    def fill_buffer_with_unique_transitions(self,other_buffer,buffer,size):
-        iterator = partial(unused_datapoints_iterator, other_buffer=other_buffer,env=self.env,
-                                              convert_fxn=self.convert_fxn)
-        buffer= self.fill_buffer_with_iterator(buffer,size,iterator)
+    def fill_buffer_with_unique_transitions(self, other_buffer, buffer,size):
+        iterator = get_unused_datapoints_iterator(other_buffer=other_buffer,
+                                                  env=self.env,
+                                                  convert_fxn=self.convert_fxn)
+        buffer = self.fill_buffer_with_iterator(buffer,size,iterator)
         return buffer
     
-    def fill_buffer_with_iterator(self,buffer,size, iterator):
-        global_size=0
-        while True:
-            for i, transition in enumerate(iterator()):
-                buffer.push(*transition)
-                global_size += 1
-                if global_size >= size:
-                    return buffer
-
-
-
-
+    def fill_buffer_with_list(self,buffer,list_, size):
+        iterator = partial(list_iterator,list_of_points=list_,env=self.env, convert_fxn=self.convert_fxn)
         
-
+        buffer = self.fill_buffer_with_iterator(buffer,size, iterator)
+        return buffer
     
+    def fill_buffer_with_iterator(self, buffer,size, iterator):
+        size = np.inf if size == -1 else size
+        global_size=0
+        for i, transition in enumerate(iterator()):
+            buffer.push(*transition)
+            global_size += 1
+            if global_size >= size:
+                return buffer
+        return buffer
 
-    
- 
+
+# In[43]:
 
 
-# In[4]:
-
-
-if __name__ == "__main__":
+def test_conflicting_buffer_fill():
     bf = BufferFiller()
     
-    rb = bf.create_and_fill(size=100)
+    rb = bf.create_and_fill(size=1000)
 
     val_rb = bf.create_and_fill(size=10,conflicting_buffer=rb)
     
@@ -177,4 +177,36 @@ if __name__ == "__main__":
     assert rts.isdisjoint(vts)
     assert rts.isdisjoint(tts)
     assert vts.isdisjoint(tts)
+
+
+# In[44]:
+
+
+def test_fill_with_list():
+    bf = BufferFiller()
+
+    rb = bf.create_and_fill(size=1000)
+
+    rb_list = get_zipped_list_from_buffers(rb)
+
+    rb_copy = bf.create_and_fill(size=-1,list_of_points=copy.deepcopy(rb_list))
+
+    rb_copy_list = get_zipped_list_from_buffers(rb_copy)
+
+
+    rbs = set(list(rb_list))
+
+    rbcs = set(list(rb_copy_list))
+    assert rbs == rbcs
+    
+    
+    
+
+
+# In[46]:
+
+
+if __name__ == "__main__":
+    test_conflicting_buffer_fill()
+    test_fill_with_list()
 
