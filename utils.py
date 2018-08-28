@@ -29,22 +29,24 @@ import random
 from tensorboardX import SummaryWriter
 
 
+# In[15]:
+
+
+def setup_dirs_logs(args, exp_name):
+    base = Path("./.results")
+    exp_dir = base / exp_name
+    writer = SummaryWriter(log_dir=str(exp_dir))
+    write_to_config_file(args.__dict__, exp_dir)
+    model_dir = exp_dir / Path("models")
+    model_dir.mkdir(exist_ok=True,parents=True)
+    return writer, model_dir
+
+
 # In[ ]:
 
 
 def parse_minigrid_env_name(name):
     return name.split("-")[2].split("x")[0]
-
-
-# In[ ]:
-
-
-def setup_dirs_logs(args):
-    log_dir = './.logs/%s'%args.output_dirname
-    writer = SummaryWriter(log_dir=log_dir)
-    write_to_config_file(args.__dict__, log_dir)
-
-    return writer
 
 
 # In[ ]:
@@ -392,25 +394,25 @@ def do_k_episodes(convert_fxn,env,policy,k=1,epsilon=0.1,):
         return np.mean(rewards), rewards
 
 
-# In[21]:
+# In[2]:
 
 
-if __name__ == "__main__":
-    from replay_buffer import create_and_fill_replay_buffer
+# if __name__ == "__main__":
+#     from replay_buffer import create_and_fill_replay_buffer
     
-    env = gym.make("MiniGrid-Empty-6x6-v0")
-    rb = create_and_fill_replay_buffer(env=env,size=10, 
-                                     other_buffers=[])
+#     env = gym.make("MiniGrid-Empty-6x6-v0")
+#     rb = create_and_fill_replay_buffer(env=env,size=10, 
+#                                      other_buffers=[])
 
-    used = set([(t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction) for t in rb.memory])
+#     used = set([(t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction) for t in rb.memory])
 
-    unused = []
-    for t in unused_datapoints_iterator(other_buffer=rb,env=env ):
-        unused.append((t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction))
-    unused_set = set(unused)
+#     unused = []
+#     for t in unused_datapoints_iterator(other_buffer=rb,env=env ):
+#         unused.append((t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction))
+#     unused_set = set(unused)
 
-    assert used.isdisjoint(unused_set)
-    assert len(used.union(unused_set)) == (env.grid_size - 2)**2 * 3 * 4
+#     assert used.isdisjoint(unused_set)
+#     assert len(used.union(unused_set)) == (env.grid_size - 2)**2 * 3 * 4
 
 
 # In[ ]:
