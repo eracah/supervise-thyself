@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[8]:
+# In[1]:
 
 
 from base_encoder import Encoder
@@ -18,22 +18,20 @@ from functools import partial
 from torch import nn
 from torch.optim import Adam, RMSprop
 import numpy as np
+from pathlib import Path
 
 
-# In[9]:
+# In[2]:
 
 
-def setup_args():
+def setup_args(test_notebook):
     tmp_argv = copy.deepcopy(sys.argv)
-    test_notebook = False
-    if "ipykernel_launcher" in sys.argv[0]:
+    if test_notebook:
         sys.argv = [""]
-        test_notebook= True
     
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--lasso_coeff", type=float, default=0.1)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
     parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
     parser.add_argument("--batch_size",type=int,default=32)
@@ -53,7 +51,7 @@ def setup_args():
     return args
 
 
-# In[10]:
+# In[3]:
 
 
 def ss_train(model, opt, writer, episode, tr_buf):
@@ -96,7 +94,7 @@ def setup_model(args, action_space):
     inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
     return inv_model
 
-def train_inv_model(args, writer):
+def train_inv_model(args, writer, model_dir):
     env, action_space, grid_size, num_directions, tot_examples = setup_env(args.env_name)
     inv_model = setup_model(args, action_space)
     im_opt = Adam(lr=args.lr, params=inv_model.parameters())
@@ -108,14 +106,29 @@ def train_inv_model(args, writer):
         print("episode %i"%episode)
         loss, acc = ss_train(inv_model, im_opt, writer, episode, tr_buf)
         episode += 1
+        torch.save(inv_model.state_dict(), model_dir / "cur_model.pt")
+        
     
 
 
-# In[11]:
+# In[4]:
+
+
+def setup_exp_name(test_notebook, args):
+    prefix = ("nb_" if test_notebook else "")
+    exp_name = Path(prefix  + "_".join(["lr%0.5f"%args.lr,"%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
+    base_dir = Path("inv_model")
+    return base_dir / exp_name
+    
+
+
+# In[5]:
 
 
 if __name__ == "__main__":
-    args = setup_args()
-    writer = setup_dirs_logs(args)
-    train_inv_model(args, writer)
+    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
+    args = setup_args(test_notebook)
+    exp_name = setup_exp_name(test_notebook,args)
+    writer, model_dir = setup_dirs_logs(args,exp_name)
+    train_inv_model(args, writer, model_dir)
 
