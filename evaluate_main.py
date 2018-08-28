@@ -21,6 +21,7 @@ from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
 import numpy as np
 import time
+from pathlib import Path
 import json
 from functools import partial
 from replay_buffer import BufferFiller
@@ -31,17 +32,25 @@ from utils import mkstr,write_to_config_file,                collect_one_data_po
 from quant_evaluation import QuantEvals
 
 
-# In[8]:
+# In[2]:
 
 
+def setup_exp_name(test_notebook, args):
+    mstr = partial(mkstr,args=args)
+    prefix = ("nb_" if test_notebook else "")
+    exp_name = Path(prefix  + "_".join(["%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
+    base_dir = Path("eval")
+    return base_dir / exp_name
 
 
-def setup_args():
+# In[3]:
+
+
+def setup_args(test_notebook):
     tmp_argv = copy.deepcopy(sys.argv)
-    test_notebook = False
-    if "ipykernel_launcher" in sys.argv[0]:
+    if test_notebook:
         sys.argv = [""]
-        test_notebook= True
+
     
     parser = argparse.ArgumentParser()
 
@@ -71,18 +80,12 @@ def setup_args():
     sys.argv = tmp_argv
     if test_notebook:
         args.batch_size = 5
-        #args.online=True
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
-    mstr = partial(mkstr,args=args)
-    output_dirname = ("nb_" if test_notebook else "") + "_".join(["e%s"%parse_minigrid_env_name(args.env_name),
-                                                                        "r%i"%(args.resize_to[0])
-                                                                       ])
-    args.output_dirname = output_dirname
     return args
 
 
 
-# In[10]:
+# In[4]:
 
 
 def setup_models():
@@ -99,7 +102,7 @@ def setup_models():
     
 
 
-# In[11]:
+# In[5]:
 
 
 def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
@@ -131,14 +134,17 @@ def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
  
 
 
-# In[12]:
+# In[6]:
 
 
 #train
 if __name__ == "__main__":
+    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
+    args = setup_args(test_notebook)
+    exp_dir = setup_exp_name(test_notebook, args)
+    writer, models_dir = setup_dirs_logs(args, exp_dir)
     
-    args = setup_args()
-    writer = setup_dirs_logs(args)
+
     env, action_space, grid_size, num_directions, tot_examples = setup_env(args.env_name)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     policy=lambda x0: np.random.choice(action_space)
