@@ -9,13 +9,14 @@ import random
 from collections import namedtuple
 import torch
 import numpy as np
-from utils import convert_frames,convert_frame,list_iterator,rollout_iterator,                  plot_test,get_unused_datapoints_iterator,get_zipped_list_from_buffers
+from utils import convert_frames,convert_frame
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 from functools import partial
 from utils import get_trans_tuple
 from functools import partial
+from iterators import PolicyIterator, ListIterator, UnusedPointsIterator
 #from torch.utils.data import 
 import copy
 
@@ -24,6 +25,8 @@ import copy
 
 
 class ReplayMemory(object):
+    """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample
+    or like normal data iterator used in most supervised learning problems with sellf.__iter__()"""
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
     def __init__(self, capacity=10**6, batch_size=64):
         self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -73,7 +76,16 @@ class ReplayMemory(object):
         
         batch = self.Transition(*list(tb_dict.values()))
         return batch
-        
+
+    def get_zipped_list(self,keys=["x0_coord_x",
+                                                "x0_coord_y",
+                                                "x0_direction",
+                                                "a"]):
+
+        one_big_trans = self.Transition(*zip(*self.memory))
+        ret = [one_big_trans._asdict()[key] for key in keys ]
+        return list(zip(*ret))
+    
     def __iter__(self):
         """Iterator that samples without replacement for replay buffer
         It's basically like a standard sgd setup
@@ -90,62 +102,59 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[3]:
+# In[39]:
 
 
 class BufferFiller(object):
+    """creates and fills replay buffers with transitions"""
     def __init__(self,
                  convert_fxn = partial(convert_frame, resize_to=(64,64)),
                  env = gym.make("MiniGrid-Empty-8x8-v0"),
-                 policy= lambda x0: np.random.choice(3)):
+                 policy= lambda x0: np.random.choice(3), capacity=10000,batch_size=32):
         self.env = env
         self.policy = policy
         self.convert_fxn = convert_fxn
+        self.capacity = capacity
+        self.batch_size = batch_size
         
 
-
-    def create_and_fill(self,size=1000,
-                        batch_size=32,
-                        capacity=10000, 
-                        conflicting_buffer=None,
-                        list_of_points=None ):
-
-        buffer = ReplayMemory(capacity=capacity,
-                                   batch_size=batch_size)
-
-        if conflicting_buffer:
-            buffer = self.fill_buffer_with_unique_transitions(conflicting_buffer,buffer,size)
-        elif list_of_points:
-            buffer = self.fill_buffer_with_list(buffer,list_of_points, size)
-        else:    
-            buffer = self.fill_buffer_with_rollouts(buffer, size)
-
-        return buffer
+    def make_empty_buffer(self):
+        return ReplayMemory(capacity=self.capacity, batch_size=self.batch_size)
     
-    def fill_buffer_with_rollouts(self,buffer,size):
-        iterator = partial(rollout_iterator,env=self.env,
-                                    convert_fxn=self.convert_fxn,
-                                    policy=self.policy)
-        buffer = self.fill_buffer_with_iterator(buffer,size,iterator)
+    def fill(self,size):
+        """fill with transitions by just following a policy"""
+        buffer = self.make_empty_buffer()
+        iterator = PolicyIterator(policy=self.policy,
+                                  env=self.env, 
+                                  convert_fxn=self.convert_fxn)
+        buffer = self.fill_using_iterator(buffer,size,iterator)
         return buffer  
 
-    def fill_buffer_with_unique_transitions(self, other_buffer, buffer,size):
-        iterator = get_unused_datapoints_iterator(other_buffer=other_buffer,
-                                                  env=self.env,
-                                                  convert_fxn=self.convert_fxn)
-        buffer = self.fill_buffer_with_iterator(buffer,size,iterator)
+    def fill_with_unvisited_states(self, visited_buffer,size):
+        """fill with transitions not present in 'visited_buffer' """
+        buffer = self.make_empty_buffer()
+        visited_list = copy.deepcopy(visited_buffer.get_zipped_list())
+        iterator = UnusedPointsIterator(visited_list, 
+                                        env=self.env,
+                                        convert_fxn=self.convert_fxn)
+        buffer = self.fill_using_iterator(buffer,size,iterator)
         return buffer
     
-    def fill_buffer_with_list(self,buffer,list_, size):
-        iterator = partial(list_iterator,list_of_points=list_,env=self.env, convert_fxn=self.convert_fxn)
+    def fill_with_list(self,list_, size):
+        """fill with transitions specified in a list of coordinates and actions """
+        buffer = self.make_empty_buffer()
+        iterator = ListIterator(list_of_points=list_,
+                                env=self.env,
+                                convert_fxn=self.convert_fxn)
         
-        buffer = self.fill_buffer_with_iterator(buffer,size, iterator)
+        buffer = self.fill_using_iterator(buffer,size, iterator)
         return buffer
     
-    def fill_buffer_with_iterator(self, buffer,size, iterator):
+    def fill_using_iterator(self, buffer,size, iterator):
+        """fill using the given transition iterator """
         size = np.inf if size == -1 else size
         global_size=0
-        for i, transition in enumerate(iterator()):
+        for i, transition in enumerate(iterator):
             buffer.push(*transition)
             global_size += 1
             if global_size >= size:
@@ -153,33 +162,50 @@ class BufferFiller(object):
         return buffer
 
 
-# In[43]:
+# In[40]:
+
+
+def test_fill_buffer_with_rollouts():
+    bf = BufferFiller()
+    rb = bf.fill(100)
+
+
+# In[41]:
+
+
+test_fill_buffer_with_rollouts()
+
+
+# In[ ]:
+
+
+def test_
+
+
+# In[42]:
 
 
 def test_conflicting_buffer_fill():
-    bf = BufferFiller()
-    
-    rb = bf.create_and_fill(size=1000)
+    bf = BufferFiller(env=gym.make("MiniGrid-Empty-6x6-v0"))
+    rb = bf.fill(size=100)
+    val_rb = bf.fill_with_unvisited_states(size=50,visited_buffer=rb)
+    tst_rb = bf.fill_with_unvisited_states(size=10,visited_buffer=rb+val_rb)
+    rts = set(rb.get_zipped_list())
+    vts = set(val_rb.get_zipped_list())
+    tts = set(tst_rb.get_zipped_list())
 
-    val_rb = bf.create_and_fill(size=10,conflicting_buffer=rb)
-    
-    tst_rb = bf.create_and_fill(size=10,conflicting_buffer=rb+val_rb)
-    vt = val_rb.sample(5)
-
-    vts = set([vt.x0_coord_x,vt.x0_coord_y,vt.a,vt.x0_direction])
-
-    rt = rb.sample(15)
-
-    rts = set([rt.x0_coord_x,rt.x0_coord_y,rt.a,rt.x0_direction])
-
-    tt = tst_rb.sample(5)
-    tts = set([tt.x0_coord_x,tt.x0_coord_y,tt.a,tt.x0_direction])
     assert rts.isdisjoint(vts)
     assert rts.isdisjoint(tts)
     assert vts.isdisjoint(tts)
 
 
-# In[44]:
+# In[26]:
+
+
+test_conflicting_buffer_fill()
+
+
+# In[17]:
 
 
 def test_fill_with_list():
