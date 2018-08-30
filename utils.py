@@ -4,7 +4,7 @@
 # In[2]:
 
 
-import custom_grids
+import data.custom_grids
 import sys
 from torch import nn
 import torch
