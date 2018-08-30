@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[23]:
+# In[1]:
 
 
 import gym
@@ -14,7 +14,7 @@ from itertools import product
 from collectors import DataCollector
 
 
-# In[24]:
+# In[2]:
 
 
 def create_zip_all(grid_size=(6,6),num_directions=4, num_actions=3):
@@ -25,7 +25,7 @@ def create_zip_all(grid_size=(6,6),num_directions=4, num_actions=3):
     return product(all_coord_x,all_coord_y,all_directions,all_actions)
 
 
-# In[25]:
+# In[3]:
 
 
 class BaseIterator(object):
@@ -48,7 +48,7 @@ class BaseIterator(object):
     
 
 
-# In[26]:
+# In[4]:
 
 
 class PolicyIterator(BaseIterator):
@@ -82,7 +82,7 @@ class PolicyIterator(BaseIterator):
     
 
 
-# In[27]:
+# In[5]:
 
 
 class ListIterator(BaseIterator):
@@ -111,7 +111,7 @@ class ListIterator(BaseIterator):
         
 
 
-# In[28]:
+# In[6]:
 
 
 class UnusedPointsIterator(ListIterator):
@@ -136,13 +136,13 @@ class UnusedPointsIterator(ListIterator):
         return list(unused)
 
 
-# In[18]:
+# In[7]:
 
 
 ############ TESTS ##############
 
 
-# In[70]:
+# In[8]:
 
 
 def test_unused_points_iterator():
@@ -173,7 +173,7 @@ def test_unused_points_iterator():
     
 
 
-# In[71]:
+# In[9]:
 
 
 def test_policy_iterator():
@@ -199,7 +199,7 @@ def test_policy_iterator():
             assert pi.env.step_count == 1
 
 
-# In[72]:
+# In[10]:
 
 
 def test_list_iterator():
@@ -228,7 +228,7 @@ def test_list_iterator():
     assert test_list == list_of_points
 
 
-# In[73]:
+# In[11]:
 
 
 if __name__ == "__main__":

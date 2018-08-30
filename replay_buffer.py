@@ -102,7 +102,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[39]:
+# In[3]:
 
 
 class BufferFiller(object):
@@ -162,7 +162,25 @@ class BufferFiller(object):
         return buffer
 
 
-# In[40]:
+# In[4]:
+
+
+def test_conflicting_buffer_fill():
+    bf = BufferFiller(env=gym.make("MiniGrid-Empty-6x6-v0"))
+    rb = bf.fill(size=1000)
+    val_rb = bf.fill_with_unvisited_states(size=100,visited_buffer=rb)
+    rts = set(rb.get_zipped_list())
+    vts = set(val_rb.get_zipped_list())
+    assert rts.isdisjoint(vts)
+
+    tst_rb = bf.fill_with_unvisited_states(size=10,visited_buffer=rb+val_rb)
+    tst_rb.get_zipped_list()
+    tts = set(tst_rb.get_zipped_list())
+    assert rts.isdisjoint(tts)
+    assert vts.isdisjoint(tts)
+
+
+# In[5]:
 
 
 def test_fill_buffer_with_rollouts():
@@ -170,54 +188,19 @@ def test_fill_buffer_with_rollouts():
     rb = bf.fill(100)
 
 
-# In[41]:
-
-
-test_fill_buffer_with_rollouts()
-
-
-# In[ ]:
-
-
-def test_
-
-
-# In[42]:
-
-
-def test_conflicting_buffer_fill():
-    bf = BufferFiller(env=gym.make("MiniGrid-Empty-6x6-v0"))
-    rb = bf.fill(size=100)
-    val_rb = bf.fill_with_unvisited_states(size=50,visited_buffer=rb)
-    tst_rb = bf.fill_with_unvisited_states(size=10,visited_buffer=rb+val_rb)
-    rts = set(rb.get_zipped_list())
-    vts = set(val_rb.get_zipped_list())
-    tts = set(tst_rb.get_zipped_list())
-
-    assert rts.isdisjoint(vts)
-    assert rts.isdisjoint(tts)
-    assert vts.isdisjoint(tts)
-
-
-# In[26]:
-
-
-test_conflicting_buffer_fill()
-
-
-# In[17]:
+# In[6]:
 
 
 def test_fill_with_list():
     bf = BufferFiller()
 
-    rb = bf.create_and_fill(size=1000)
+    rb = bf.fill(size=1000)
 
-    rb_list = get_zipped_list_from_buffers(rb)
+    rb_list = rb.get_zipped_list()
 
-    rb_copy = bf.create_and_fill(size=-1,list_of_points=copy.deepcopy(rb_list))
+    rb_copy = bf.fill_with_list(rb_list,size=-1)
 
-    rb_copy_list = get_zipped_list_from_buffers(rb_copy)
+    rb_copy_list = rb_copy.get_zipped_list()
 
 
     rbs = set(list(rb_list))
@@ -229,10 +212,11 @@ def test_fill_with_list():
     
 
 
-# In[46]:
+# In[7]:
 
 
 if __name__ == "__main__":
     test_conflicting_buffer_fill()
+    test_fill_buffer_with_rollouts()
     test_fill_with_list()
 
