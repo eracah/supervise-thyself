@@ -4,7 +4,7 @@
 # In[1]:
 
 
-import custom_grids
+import data.custom_grids
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
@@ -24,12 +24,12 @@ import time
 from pathlib import Path
 import json
 from functools import partial
-from replay_buffer import BufferFiller
-from base_encoder import Encoder
-from baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
-from inverse_model import InverseModel
-from utils import mkstr,write_to_config_file,                collect_one_data_point,                convert_frame, classification_acc,                setup_env, setup_dirs_logs,                parse_minigrid_env_name
-from quant_evaluation import QuantEvals
+from data.replay_buffer import BufferFiller
+from models.base_encoder import Encoder
+from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
+from models.inverse_model import InverseModel
+from utils import mkstr,write_to_config_file,convert_frame, classification_acc,setup_env, setup_dirs_logs,parse_minigrid_env_name
+from evaluations.quant_evaluation import QuantEvals
 
 
 # In[2]:
@@ -80,6 +80,7 @@ def setup_args(test_notebook):
     sys.argv = tmp_argv
     if test_notebook:
         args.batch_size = 5
+        args.max_quant_eval_epochs = 2
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     return args
 
@@ -109,26 +110,33 @@ def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
 
     
     
-    bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy)
+    bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy,
+                      batch_size=args.batch_size)
     print("creating tr_buf")
-    tr_buf = bf.create_and_fill(size=int(0.7*tot_examples),
-                                batch_size=args.batch_size)
+    size = int(0.7*tot_examples)
+    tr_buf = bf.fill(size=size)
     print(len(tr_buf))
+    assert size == len(tr_buf)
+    
+    
     print("creating val1_buf")
-    val1_buf = bf.create_and_fill(size=int(0.1*tot_examples),
-                                batch_size=args.val_batch_size,
-                                conflicting_buffer=tr_buf)
+    size=int(0.1*tot_examples)
+    val1_buf = bf.fill_with_unvisited_states(visited_buffer=tr_buf, size=size)
     print(len(val1_buf))
+    assert size == len(val1_buf)
+    
     print("creating val2_buf")
-    val2_buf = bf.create_and_fill(size=int(0.1*tot_examples),
-                                batch_size=args.val_batch_size,
-                                conflicting_buffer=tr_buf + val1_buf)
+    size=int(0.1*tot_examples)
+    val2_buf = bf.fill_with_unvisited_states(visited_buffer=tr_buf + val1_buf, size=size)
+    
     print(len(val2_buf))
+    assert size == len(val2_buf)
     print("creating test_buf")
-    test_buf = bf.create_and_fill(size=int(0.1*tot_examples),
-                                batch_size=args.val_batch_size,
-                                conflicting_buffer=tr_buf+val1_buf + val2_buf)
+    
+    size=int(0.1*tot_examples)
+    test_buf = bf.fill_with_unvisited_states(visited_buffer=tr_buf + val1_buf + val2_buf, size=size)
     print(len(test_buf))
+    assert size == len(test_buf)
     return tr_buf, val1_buf, val2_buf, test_buf
     
  
@@ -146,11 +154,12 @@ if __name__ == "__main__":
     
 
     env, action_space, grid_size, num_directions, tot_examples = setup_env(args.env_name)
+    if test_notebook:
+        tot_examples = 50
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     policy=lambda x0: np.random.choice(action_space)
     tr_buf, val1_buf, val2_buf, test_buf = setup_tr_val_val_test(env, policy, convert_fxn, tot_examples)
-    
-    
+
     
     raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
     enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
