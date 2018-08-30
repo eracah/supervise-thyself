@@ -4,11 +4,11 @@
 # In[1]:
 
 
-from base_encoder import Encoder
+from models.base_encoder import Encoder
 from utils import setup_env
-from replay_buffer import BufferFiller
+from data.replay_buffer import BufferFiller
 import argparse
-from inverse_model import InverseModel
+from models.inverse_model import InverseModel
 from utils import convert_frame, classification_acc, mkstr, setup_dirs_logs, parse_minigrid_env_name
 import argparse
 import sys
@@ -79,9 +79,10 @@ def get_tr_buf(args, env, action_space, tot_examples):
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     policy=lambda x0: np.random.choice(action_space)
     
-    bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy)
-    tr_buf = bf.create_and_fill(size=int(0.7*tot_examples),
-                                batch_size=args.batch_size)
+    bf = BufferFiller(convert_fxn=convert_fxn, env=env, 
+                      policy=policy,
+                      batch_size=args.batch_size)
+    tr_buf = bf.fill(size=int(0.7*tot_examples))
     return tr_buf
 
         
