@@ -8,7 +8,6 @@ import data.custom_grids
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
-
 import torch
 from torch import nn
 import torch.functional as F
