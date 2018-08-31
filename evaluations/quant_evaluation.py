@@ -95,7 +95,7 @@ class QuantEval(object): #it's a god class
     def one_iter(self, batch, f0, update_weights=True):
         name = self.predicted_value_name
         if update_weights:
-            self.clsf.zero_grad()
+            self.opt.zero_grad()
         pred = self.clsf(f0)
         true = getattr(batch, name)
         loss = self.clsf.get_loss(pred, true)
