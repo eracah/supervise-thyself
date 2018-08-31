@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[7]:
+# In[8]:
 
 
 from data.replay_buffer import BufferFiller
@@ -9,7 +9,7 @@ from data.iterators import UnusedPointsIterator, ListIterator, PolicyIterator
 from data.collectors import DataCollector
 
 
-# In[8]:
+# In[9]:
 
 
 import unittest
@@ -22,7 +22,7 @@ import numpy as np
 import warnings
 
 
-# In[9]:
+# In[14]:
 
 
 class TestReplayBuffer(unittest.TestCase):
@@ -68,9 +68,20 @@ class TestReplayBuffer(unittest.TestCase):
 
         rbcs = set(list(rb_copy_list))
         self.assertEqual(rbs, rbcs)
+        
+    def test_split_buffer(self):
+        prop = 0.7
+        bf = BufferFiller()
+
+        rb = bf.fill(size=200)
+
+        len_unique = len(rb.get_zipped_list(unique=True))
+        rb1, rb2 = bf.split(rb,proportion=prop)
+        self.assertEqual(len(rb1),int(prop*len_unique))
+    
 
 
-# In[10]:
+# In[15]:
 
 
 class TestIterators(unittest.TestCase):
@@ -152,7 +163,7 @@ class TestIterators(unittest.TestCase):
 
 
 
-# In[11]:
+# In[16]:
 
 
 class TestCollectors(unittest.TestCase):
@@ -184,7 +195,7 @@ class TestCollectors(unittest.TestCase):
             self.assertEqual(len(trans),11)
 
 
-# In[12]:
+# In[17]:
 
 
 if __name__ == "__main__":
