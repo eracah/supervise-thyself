@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[8]:
 
 
 import data.custom_grids
@@ -21,7 +21,7 @@ from data.iterators import PolicyIterator, ListIterator, UnusedPointsIterator
 import copy
 
 
-# In[2]:
+# In[38]:
 
 
 class ReplayMemory(object):
@@ -41,6 +41,10 @@ class ReplayMemory(object):
     def __add__(self,other_buffer):
         self.memory = self.memory + other_buffer.memory
         return self
+    
+
+        
+    
     def push(self, *args):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
@@ -102,7 +106,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-# In[3]:
+# In[ ]:
 
 
 class BufferFiller(object):
@@ -137,7 +141,11 @@ class BufferFiller(object):
         iterator = UnusedPointsIterator(visited_list, 
                                         env=self.env,
                                         convert_fxn=self.convert_fxn)
+        if size > len(iterator) or size == -1:
+            size = len(iterator)
+        assert len(iterator) > 0
         buffer = self.fill_using_iterator(buffer,size,iterator)
+        
         assert set(visited_buffer.get_zipped_list()).isdisjoint(set(buffer.get_zipped_list()))
         return buffer
     
@@ -148,12 +156,15 @@ class BufferFiller(object):
                                 env=self.env,
                                 convert_fxn=self.convert_fxn)
         
+        if size > len(iterator) or size == -1:
+            size = len(iterator)
+
         buffer = self.fill_using_iterator(buffer,size, iterator)
         return buffer
     
     def fill_using_iterator(self, buffer,size, iterator):
         """fill using the given transition iterator """
-        size = np.inf if size == -1 else size
+        
         global_size=0
         while global_size < size:
             for i, transition in enumerate(iterator):
@@ -164,63 +175,4 @@ class BufferFiller(object):
             iterator.reset()
         return buffer
 
-
-
-# In[4]:
-
-
-def test_conflicting_buffer_fill():
-    bf = BufferFiller(env=gym.make("MiniGrid-Empty-6x6-v0"))
-    rb = bf.fill(size=1000)
-    val_rb = bf.fill_with_unvisited_states(size=100,visited_buffer=rb)
-    rts = set(rb.get_zipped_list())
-    vts = set(val_rb.get_zipped_list())
-    assert rts.isdisjoint(vts)
-
-    tst_rb = bf.fill_with_unvisited_states(size=10,visited_buffer=rb+val_rb)
-    tst_rb.get_zipped_list()
-    tts = set(tst_rb.get_zipped_list())
-    assert rts.isdisjoint(tts)
-    assert vts.isdisjoint(tts)
-
-
-# In[5]:
-
-
-def test_fill_buffer_with_rollouts():
-    bf = BufferFiller()
-    rb = bf.fill(100)
-
-
-# In[6]:
-
-
-def test_fill_with_list():
-    bf = BufferFiller()
-
-    rb = bf.fill(size=1000)
-
-    rb_list = rb.get_zipped_list()
-
-    rb_copy = bf.fill_with_list(rb_list,size=-1)
-
-    rb_copy_list = rb_copy.get_zipped_list()
-
-
-    rbs = set(list(rb_list))
-
-    rbcs = set(list(rb_copy_list))
-    assert rbs == rbcs
-    
-    
-    
-
-
-# In[7]:
-
-
-if __name__ == "__main__":
-    test_conflicting_buffer_fill()
-    test_fill_buffer_with_rollouts()
-    test_fill_with_list()
 

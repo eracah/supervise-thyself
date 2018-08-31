@@ -44,6 +44,9 @@ class BaseIterator(object):
     def _next(self):
         raise NotImplementedError()
         
+    def reset(self):
+        return
+        
     
     
 
@@ -95,7 +98,9 @@ class ListIterator(BaseIterator):
         self.list_of_points = list_of_points
         self.i = 0
 
-        
+    def __len__(self):
+        return len(self.list_of_points)
+    
     def _next(self):
         if self.i < len(self.list_of_points):
             (coord_x,coord_y, direction, action) = self.list_of_points[self.i]
@@ -134,105 +139,4 @@ class UnusedPointsIterator(ListIterator):
         assert unused.isdisjoint(used_set)
 
         return list(unused)
-
-
-# In[7]:
-
-
-############ TESTS ##############
-
-
-# In[8]:
-
-
-def test_unused_points_iterator():
-    env = gym.make("MiniGrid-Empty-6x6-v0")
-    num_dirs = 4
-    num_actions = 3
-    grid_list = range(1,env.grid_size - 1)
-    dir_list = range(num_dirs)
-    act_list = range(num_actions)
-    ch = np.random.choice
-    size = 1000
-    x = ch(grid_list,size=size)
-    y = ch(grid_list,size=size)
-    d = ch(dir_list,size=size)
-    a = ch(act_list,size=size)
-
-    used = list(zip(x,y,d,a))
-    ui = UnusedPointsIterator(used)
-
-    unused = ui.get_unused_datapoints(used, env)
-    unused = []
-    for t in ui:
-        unused.append((t.x0_coord_x,t.x0_coord_y,t.x0_direction,t.a))
-    unused_set = set(unused)
-    used_set = set(used)
-    assert used_set.isdisjoint(set(unused_set))
-    assert len(used_set.union(unused_set)) == (env.grid_size - 2)**2 * 3 * 4
-    
-
-
-# In[9]:
-
-
-def test_policy_iterator():
-    
-    pi = PolicyIterator()
-    
-    # test continuing where you left off
-    last_step = 0
-    for i,g in enumerate(pi):
-        last_step = pi.env.step_count
-
-        if i == 5:
-            break
-
-    for i,g in enumerate(pi):
-        if i == 0:
-            assert pi.env.step_count == last_step + 1
-
-    # test full reset
-    pi.reset()
-    for i,g in enumerate(pi):
-        if i == 0:
-            assert pi.env.step_count == 1
-
-
-# In[10]:
-
-
-def test_list_iterator():
-    grid_list = range(1,5)
-    dir_list = range(4)
-    act_list = range(3)
-    ch = np.random.choice
-    size =100
-    x = ch(grid_list,size=size)
-    y = ch(grid_list,size=size)
-    d = ch(dir_list,size=size)
-    a = ch(act_list,size=size)
-
-    list_of_points = list(zip(x,y,d,a))
-    #print(list_of_points)
-    list_it = ListIterator(list_of_points)
-    test_list = []
-    for i,t in enumerate(list_it):
-        trans_tup = tuple([getattr(t,k) for k in ["x0_coord_x",
-                                            "x0_coord_y",
-                                            "x0_direction",
-                                            "a"] ])
-
-        test_list.append(trans_tup)
-    assert i == len(list_of_points) - 1
-    assert test_list == list_of_points
-
-
-# In[11]:
-
-
-if __name__ == "__main__":
-    test_list_iterator()
-    test_policy_iterator()
-    test_unused_points_iterator()
 
