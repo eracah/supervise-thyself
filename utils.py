@@ -1,19 +1,24 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 import data.custom_grids
+import gym
+from gym_minigrid.register import env_list
+from gym_minigrid.minigrid import Grid
+
+
+
 import sys
 from torch import nn
 import torch
 from torchvision.utils import make_grid
 import numpy as np
 import json
-import gym
-from gym_minigrid.register import env_list
-from gym_minigrid.minigrid import Grid
+
+
 from matplotlib import pyplot as plt
 from gym_minigrid.wrappers import *
 from PIL import Image
@@ -37,7 +42,7 @@ def setup_dirs_logs(args, exp_name):
     exp_dir = base / exp_name
     writer = SummaryWriter(log_dir=str(exp_dir))
     write_to_config_file(args.__dict__, exp_dir)
-    model_dir = exp_dir / Path("models")
+    model_dir = Path(".models") / exp_name
     model_dir.mkdir(exist_ok=True,parents=True)
     return writer, model_dir
 
