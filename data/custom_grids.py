@@ -34,7 +34,7 @@ class EmptyEnv64x64(EmptyEnv):
 
 register(
     id='MiniGrid-Empty-32x32-v0',
-    entry_point='custom_grids:EmptyEnv32x32'
+    entry_point='data.custom_grids:EmptyEnv32x32'
 )
 
 
@@ -43,6 +43,6 @@ register(
 
 register(
     id='MiniGrid-Empty-64x64-v0',
-    entry_point='custom_grids:EmptyEnv64x64'
+    entry_point='data.custom_grids:EmptyEnv64x64'
 )
 
