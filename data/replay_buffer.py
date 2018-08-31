@@ -21,7 +21,7 @@ from data.iterators import PolicyIterator, ListIterator, UnusedPointsIterator
 import copy
 
 
-# In[38]:
+# In[1]:
 
 
 class ReplayMemory(object):
@@ -84,11 +84,16 @@ class ReplayMemory(object):
     def get_zipped_list(self,keys=["x0_coord_x",
                                                 "x0_coord_y",
                                                 "x0_direction",
-                                                "a"]):
+                                                "a"], unique=False):
 
+
+    
         one_big_trans = self.Transition(*zip(*self.memory))
-        ret = [one_big_trans._asdict()[key] for key in keys ]
-        return list(zip(*ret))
+        separated_fields = [one_big_trans._asdict()[key] for key in keys ]
+        ret_list = list(zip(*separated_fields))
+        if unique:
+            ret_list = list(set(ret_list))
+        return ret_list
     
     def __iter__(self):
         """Iterator that samples without replacement for replay buffer
@@ -122,6 +127,19 @@ class BufferFiller(object):
         self.batch_size = batch_size
         
 
+    def split(self, buffer, proportion):
+        unique_coords = copy.deepcopy(list(set(buffer.get_zipped_list(unique=True))))
+        len_coords = len(unique_coords)
+        split_ind = int(proportion*len_coords)
+        tr_list = unique_coords[:split_ind]
+
+        val_list = unique_coords[split_ind:]
+        buf1 = self.fill_with_list(tr_list)
+        buf2 = self.fill_with_list(val_list)
+        del buffer
+        return buf1, buf2
+        
+        
     def make_empty_buffer(self):
         return ReplayMemory(capacity=self.capacity, batch_size=self.batch_size)
     
@@ -149,7 +167,7 @@ class BufferFiller(object):
         assert set(visited_buffer.get_zipped_list()).isdisjoint(set(buffer.get_zipped_list()))
         return buffer
     
-    def fill_with_list(self,list_, size):
+    def fill_with_list(self,list_, size=-1):
         """fill with transitions specified in a list of coordinates and actions """
         buffer = self.make_empty_buffer()
         iterator = ListIterator(list_of_points=list_,
