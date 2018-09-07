@@ -28,7 +28,8 @@ class InverseModel(nn.Module):
     def __init__(self,encoder, num_actions=3):
         super(InverseModel,self).__init__()
         self.encoder = encoder
-        self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
+        self.embed_len = self.encoder.embed_len
+        self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.embed_len)
     def forward(self,x0,x1):
         f0 = self.encoder(x0)
         f1 = self.encoder(x1)
