@@ -61,7 +61,7 @@ def setup_args(test_notebook):
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--val_batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[84, 84])
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[96, 96])
     parser.add_argument("--epochs",type=int,default=100000)
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--batch_norm",action="store_true")
@@ -74,6 +74,7 @@ def setup_args(test_notebook):
     parser.add_argument("--decoder_batches", type=int, default=1000)
     parser.add_argument("--collect_data",action="store_true")
     parser.add_argument("--seed",type=int,default=4)
+    parser.add_argument("--encoders_to_eval",type=str, nargs='+', default=["inv_model"])
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -86,10 +87,10 @@ def setup_args(test_notebook):
 
 
 
-# In[4]:
+# In[6]:
 
 
-def setup_models():
+def setup_models(action_space):
 
     raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device)
     rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device)
@@ -98,31 +99,52 @@ def setup_models():
                       h_ch=args.hidden_width,
                       embed_len=args.embed_len,
                       batch_norm=args.batch_norm).to(args.device)
+    if "inv_model" in args.encoders_to_eval:
+        encoder = Encoder(in_ch=3,
+                      im_wh=args.resize_to,
+                      h_ch=args.hidden_width,
+                      embed_len=args.embed_len,
+                      batch_norm=args.batch_norm).to(args.device)
+        
+        inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
+        # cutomize this for the size of images and the size of the env
+        inv_model.load_state_dict(torch.load(".models/inv_model/lr0.00005_64_r96/cur_model.pt"))
+        
 
-    return raw_pixel_enc, rand_lin_proj, rand_cnn #,  q_net, target_q_net, encoder,inv_model, 
+    return raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model.encoder #,  q_net, target_q_net, encoder,inv_model, 
     
 
 
-# In[6]:
+# In[7]:
 
 
 #train
 if __name__ == "__main__":
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
     args = setup_args(test_notebook)
+
     exp_dir = setup_exp_name(test_notebook, args)
     writer, models_dir = setup_dirs_logs(args, exp_dir)
     
 
+
+
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name, args.seed)
+    raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model = setup_models(action_space)
+    
+    
+
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     tr_buf, val_buf, eval_tr_buf, eval_val_buf, test_buf = setup_tr_val_val_test(env, random_policy,
                                                                                  convert_fxn, tot_examples, args.batch_size)
 
     
 
-    raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
-    enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
+ 
+    
+    
+
+    enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj, "inv_model":inv_model} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
     
     
     
