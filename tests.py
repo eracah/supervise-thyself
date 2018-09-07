@@ -1,15 +1,18 @@
 
 # coding: utf-8
 
-# In[8]:
+# In[1]:
 
 
 from data.replay_buffer import BufferFiller
 from data.iterators import UnusedPointsIterator, ListIterator, PolicyIterator
 from data.collectors import DataCollector
+from data.tr_val_test_splitter import setup_tr_val_val_test
+from utils import setup_env, convert_frame
+from functools import partial
 
 
-# In[9]:
+# In[2]:
 
 
 import unittest
@@ -22,7 +25,7 @@ import numpy as np
 import warnings
 
 
-# In[14]:
+# In[3]:
 
 
 class TestReplayBuffer(unittest.TestCase):
@@ -81,7 +84,7 @@ class TestReplayBuffer(unittest.TestCase):
     
 
 
-# In[15]:
+# In[4]:
 
 
 class TestIterators(unittest.TestCase):
@@ -163,7 +166,7 @@ class TestIterators(unittest.TestCase):
 
 
 
-# In[16]:
+# In[5]:
 
 
 class TestCollectors(unittest.TestCase):
@@ -195,7 +198,37 @@ class TestCollectors(unittest.TestCase):
             self.assertEqual(len(trans),11)
 
 
-# In[17]:
+# In[6]:
+
+
+class TestDatasetReproducibility(unittest.TestCase):
+    def test_tr_set_match(self):
+        seed = 10
+        env_name = 'MiniGrid-Empty-6x6-v0'
+        env, action_space, grid_size, num_directions,        tot_examples, random_policy = setup_env(env_name, seed = seed)
+        
+        convert_fxn = partial(convert_frame)
+        
+        tr_buf1, _, _,_,_ = setup_tr_val_val_test(env, random_policy,
+                                                     convert_fxn, tot_examples, 
+                                                     batch_size=10, verbose=False)
+        
+        env, action_space, grid_size, num_directions,        tot_examples, random_policy = setup_env(env_name, seed = seed)
+        
+        tr_buf2, _ = setup_tr_val_val_test(env, random_policy,
+                                                     convert_fxn, tot_examples, 
+                                                     batch_size=10, just_train=True, verbose=False)
+        
+        self.assertEqual(set(tr_buf1.get_zipped_list()),set(tr_buf2.get_zipped_list()) )
+        
+        
+
+    
+    def test_all_sets_diff(self):
+        self.assertTrue(True)
+
+
+# In[7]:
 
 
 if __name__ == "__main__":
