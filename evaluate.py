@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 import json
 from functools import partial
-from data.replay_buffer import BufferFiller
+from data.tr_val_test_splitter import setup_tr_val_val_test
 from models.base_encoder import Encoder
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from models.inverse_model import InverseModel
@@ -73,6 +73,7 @@ def setup_args(test_notebook):
     parser.add_argument("--action_strings",type=str, nargs='+', default=["forward", "left", "right"])
     parser.add_argument("--decoder_batches", type=int, default=1000)
     parser.add_argument("--collect_data",action="store_true")
+    parser.add_argument("--seed",type=int,default=4)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -102,45 +103,6 @@ def setup_models():
     
 
 
-# In[5]:
-
-
-def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples):
-
-    
-    
-    bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy,
-                      batch_size=args.batch_size)
-    print("creating tr_buf")
-    size = int(0.7*tot_examples)
-    tr_buf = bf.fill(size=size)
-    print(len(tr_buf))
-    assert size == len(tr_buf)
-    
-    
-    print("creating val1_buf")
-    size=int(0.1*tot_examples)
-    val1_buf = bf.fill_with_unvisited_states(visited_buffer=tr_buf, size=size)
-    print(len(val1_buf))
-    assert size == len(val1_buf)
-    
-    print("creating val2_buf")
-    size=int(0.1*tot_examples)
-    val2_buf = bf.fill_with_unvisited_states(visited_buffer=tr_buf + val1_buf, size=size)
-    
-    print(len(val2_buf))
-    assert size == len(val2_buf)
-    print("creating test_buf")
-    
-    size=int(0.1*tot_examples)
-    test_buf = bf.fill_with_unvisited_states(visited_buffer=tr_buf + val1_buf + val2_buf, size=size)
-    print(len(test_buf))
-    assert size == len(test_buf)
-    return tr_buf, val1_buf, val2_buf, test_buf
-    
- 
-
-
 # In[6]:
 
 
@@ -152,20 +114,20 @@ if __name__ == "__main__":
     writer, models_dir = setup_dirs_logs(args, exp_dir)
     
 
-    env, action_space, grid_size, num_directions, tot_examples = setup_env(args.env_name)
-    if test_notebook:
-        tot_examples = 50
+    env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name, args.seed)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
-    policy=lambda x0: np.random.choice(action_space)
-    tr_buf, val1_buf, val2_buf, test_buf = setup_tr_val_val_test(env, policy, convert_fxn, tot_examples)
+    tr_buf, val_buf, eval_tr_buf, eval_val_buf, test_buf = setup_tr_val_val_test(env, random_policy,
+                                                                                 convert_fxn, tot_examples, args.batch_size)
 
     
+
     raw_pixel_enc, rand_lin_proj, rand_cnn = setup_models()
     enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
-    qevs = QuantEvals(val1_buf, val2_buf, test_buf, writer,
+    
+    
+    
+    qevs = QuantEvals(eval_tr_buf, eval_val_buf, test_buf, writer,
                grid_size,num_directions, args)
-    #train_inv_model()
-
 
     eval_dict = qevs.run_evals(enc_dict)
 
