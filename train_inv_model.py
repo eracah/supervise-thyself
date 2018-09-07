@@ -4,6 +4,11 @@
 # In[1]:
 
 
+import random
+import data.custom_grids
+import gym
+from gym_minigrid.register import env_list
+from gym_minigrid.minigrid import Grid
 from models.base_encoder import Encoder
 from utils import setup_env
 from data.replay_buffer import BufferFiller
@@ -20,9 +25,10 @@ from torch.optim import Adam, RMSprop
 import numpy as np
 from pathlib import Path
 import time
+from data.tr_val_test_splitter import setup_tr_val_val_test
 
 
-# In[7]:
+# In[2]:
 
 
 def setup_args(test_notebook):
@@ -33,12 +39,13 @@ def setup_args(test_notebook):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-16x16-v0'),
+    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
     parser.add_argument("--resize_to",type=int, nargs=2, default=[96, 96])
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=100000)
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--embed_len",type=int,default=32)
+    parser.add_argument("--seed",type=int,default=4)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -52,7 +59,7 @@ def setup_args(test_notebook):
     return args
 
 
-# In[8]:
+# In[3]:
 
 
 class Trainer(object):
@@ -118,22 +125,10 @@ class Trainer(object):
             self.model.eval()
             val_loss, val_acc = self.one_epoch(self.val_buf,mode="val")
 
-def get_tr_val_buf(args, env, action_space, tot_examples):
-    convert_fxn = partial(convert_frame, resize_to=args.resize_to)
-    policy=lambda x0: np.random.choice(action_space)
-    
-    bf = BufferFiller(convert_fxn=convert_fxn, env=env, 
-                      policy=policy,
-                      batch_size=args.batch_size)
-    
-    size=int(0.7*tot_examples)
-    t0 = time.time()
-    print("filling tr buf with %i examples"%size)
-    tr_buf = bf.fill(size)
+def split_tr_set(tr_buf, fraction=0.8):
     t1 = time.time()
-    print("%8.4f seconds"%(t1-t0))
     print("doing split")
-    tr_buf,val_buf = bf.split(tr_buf,0.8)
+    tr_buf,val_buf = bf.split(tr_buf,fraction)
     t2 = time.time()
     print("%8.4f seconds"%(t2-t1))
     
@@ -157,20 +152,26 @@ def setup_exp_name(test_notebook, args):
     
 
 
-# In[9]:
+# In[4]:
 
 
 if __name__ == "__main__":
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
     args = setup_args(test_notebook)
+    convert_fxn = partial(convert_frame, resize_to=args.resize_to)
+
+
     exp_name = setup_exp_name(test_notebook,args)
     writer, model_dir = setup_dirs_logs(args,exp_name)
-    env, action_space, grid_size, num_directions, tot_examples = setup_env(args.env_name)
-    
+    env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name,args.seed)
     inv_model = setup_model(args, action_space)
+
     print("starting to load buffers")
-    tr_buf, val_buf = get_tr_val_buf(args, env, action_space, tot_examples)
+    tr_buf, val_buf = setup_tr_val_val_test(env, random_policy, 
+                                convert_fxn, tot_examples,args.batch_size,just_train=True)
     print("done loading buffers")
+    
+
     trainer = Trainer(inv_model, tr_buf, val_buf, model_dir, args, writer)
     trainer.train(lr=args.lr)
 
