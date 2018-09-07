@@ -57,8 +57,9 @@ def parse_minigrid_env_name(name):
 # In[5]:
 
 
-def setup_env(env_name):
+def setup_env(env_name, seed):
     env = gym.make(env_name)
+    env.seed(seed)
     if "MiniGrid" in env_name:
         action_space = range(3)
         grid_size = env.grid_size - 2
@@ -70,7 +71,10 @@ def setup_env(env_name):
         num_directions = None
         tot_exampls = None
     num_actions = len(action_space)
-    return env, action_space, grid_size, num_directions, tot_examples
+    
+    rng = np.random.RandomState(seed)
+    random_policy = lambda x0: rng.randint(num_actions)
+    return env, action_space, grid_size, num_directions, tot_examples, random_policy
 
 
 # In[6]:
