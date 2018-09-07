@@ -4,12 +4,12 @@
 # In[8]:
 
 
-import data.custom_grids
-import random
 from collections import namedtuple
 import torch
 import numpy as np
 from utils import convert_frames,convert_frame
+import random
+import data.custom_grids
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
@@ -39,8 +39,9 @@ class ReplayMemory(object):
         self.Transition = get_trans_tuple()
             
     def __add__(self,other_buffer):
-        self.memory = self.memory + other_buffer.memory
-        return self
+        buf = copy.deepcopy(self)
+        buf.memory = buf.memory + other_buffer.memory
+        return buf
     
 
         
