@@ -68,7 +68,7 @@ class PolicyIterator(BaseIterator):
 
     def reset(self):
         _ = self.env.reset()
-        self.env.seed(np.random.randint(100))
+        #self.env.seed(np.random.randint(100))
         self.env.agent_pos = self.env.place_agent(size=(self.env.grid_size,self.env.grid_size ))
         self.done = False
         
