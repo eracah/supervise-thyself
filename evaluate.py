@@ -42,7 +42,18 @@ def setup_exp_name(test_notebook, args):
     return base_dir / exp_name
 
 
-# In[3]:
+# In[12]:
+
+
+def get_weights_path(enc_name, args):
+    base_path = Path(".models") / Path(enc_name)
+    suffix = "_" + str(args.grid_size+2) + "_r" + str(args.resize_to[0])
+    for model_dir in base_path.iterdir():
+        if suffix in model_dir.name:
+            return model_dir / Path("cur_model.pt")
+
+
+# In[13]:
 
 
 def setup_args(test_notebook):
@@ -87,10 +98,10 @@ def setup_args(test_notebook):
 
 
 
-# In[6]:
+# In[14]:
 
 
-def setup_models(action_space):
+def setup_models(action_space, args):
 
     raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device)
     rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device)
@@ -99,23 +110,25 @@ def setup_models(action_space):
                       h_ch=args.hidden_width,
                       embed_len=args.embed_len,
                       batch_norm=args.batch_norm).to(args.device)
-    if "inv_model" in args.encoders_to_eval:
-        encoder = Encoder(in_ch=3,
-                      im_wh=args.resize_to,
-                      h_ch=args.hidden_width,
-                      embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(args.device)
-        
-        inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
-        # cutomize this for the size of images and the size of the env
-        inv_model.load_state_dict(torch.load(".models/inv_model/lr0.00005_64_r96/cur_model.pt"))
+    for enc_name in args.encoders_to_eval:
+        if enc_name == "inv_model":
+            encoder = Encoder(in_ch=3,
+                          im_wh=args.resize_to,
+                          h_ch=args.hidden_width,
+                          embed_len=args.embed_len,
+                          batch_norm=args.batch_norm).to(args.device)
+
+            inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
+            model_path = get_weights_path("inv_model", args)
+
+            inv_model.load_state_dict(torch.load(str(model_path)))
         
 
     return raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model.encoder #,  q_net, target_q_net, encoder,inv_model, 
     
 
 
-# In[7]:
+# In[15]:
 
 
 #train
@@ -130,7 +143,8 @@ if __name__ == "__main__":
 
 
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name, args.seed)
-    raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model = setup_models(action_space)
+    args.grid_size = grid_size
+    raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model = setup_models(action_space, args)
     
     
 
