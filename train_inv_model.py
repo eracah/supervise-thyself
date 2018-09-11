@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[5]:
 
 
 import random
@@ -26,6 +26,7 @@ import numpy as np
 from pathlib import Path
 import time
 from data.tr_val_test_splitter import setup_tr_val_val_test
+import os
 
 
 # In[2]:
@@ -72,9 +73,10 @@ class Trainer(object):
 
         self.writer=writer
         
-        self.opt_template = partial(Adam,params=self.model.parameters())
+        #self.opt_template = partial(Adam,params=self.model.parameters())
         
-        self.opt = None
+        #self.opt = None
+        self.opt = Adam(params=self.model.parameters(),lr=args.lr)
         self.epoch=0
         self.max_epochs = 10000
 
@@ -111,10 +113,11 @@ class Trainer(object):
         return avg_loss, avg_acc
     
         
-    def train(self,lr):
-        self.opt = self.opt_template(lr=lr)
+    def train(self):
+        #self.opt = self.opt_template(lr=lr)
         state_dict = self.model.state_dict()
         val_acc = -np.inf
+        best_val_loss = np.inf
         while val_acc < 95. or self.epoch < self.max_epochs:
             self.epoch+=1
             self.model.train()
@@ -124,6 +127,11 @@ class Trainer(object):
             torch.save(self.model.state_dict(), self.model_dir / "cur_model.pt")
             self.model.eval()
             val_loss, val_acc = self.one_epoch(self.val_buf,mode="val")
+            if val_loss < best_val_loss:
+                best_val_loss = copy.deepcopy(val_loss)
+                for f in self.model_dir.glob("best_model*"):
+                    os.remove(str(f))
+                torch.save(self.model.state_dict(), self.model_dir / Path(  ("best_model_%f.pt"%best_val_loss).rstrip('0').rstrip('.')))
 
 def split_tr_set(tr_buf, fraction=0.8):
     t1 = time.time()
@@ -146,7 +154,7 @@ def setup_model(args, action_space):
 
 def setup_exp_name(test_notebook, args):
     prefix = ("nb_" if test_notebook else "")
-    exp_name = Path(prefix  + "_".join(["lr%0.5f"%args.lr,"%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
+    exp_name = Path(prefix  + "_".join([ ("lr%f"%args.lr).rstrip('0').rstrip('.'),"%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
     base_dir = Path("inv_model")
     return base_dir / exp_name
     
@@ -173,5 +181,11 @@ if __name__ == "__main__":
     
 
     trainer = Trainer(inv_model, tr_buf, val_buf, model_dir, args, writer)
-    trainer.train(lr=args.lr)
+    trainer.train()
+
+
+# In[ ]:
+
+
+
 
