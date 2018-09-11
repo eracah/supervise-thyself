@@ -29,34 +29,49 @@ from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeigh
 from models.inverse_model import InverseModel
 from utils import mkstr,write_to_config_file,convert_frame, classification_acc,setup_env, setup_dirs_logs,parse_minigrid_env_name
 from evaluations.quant_evaluation import QuantEvals
+import os
 
 
 # In[2]:
 
 
-def setup_exp_name(test_notebook, args):
+def setup_exp_name(args):
     mstr = partial(mkstr,args=args)
-    prefix = ("nb_" if test_notebook else "")
+    prefix = ("nb_" if args.test_notebook else "")
     exp_name = Path(prefix  + "_".join(["%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
     base_dir = Path("eval")
     return base_dir / exp_name
 
 
-# In[12]:
+# In[3]:
 
 
 def get_weights_path(enc_name, args):
+    best_loss = np.inf
+    weights_path = None
     base_path = Path(".models") / Path(enc_name)
     suffix = "_" + str(args.grid_size+2) + "_r" + str(args.resize_to[0])
     for model_dir in base_path.iterdir():
         if suffix in model_dir.name:
-            return model_dir / Path("cur_model.pt")
+            if args.test_notebook:
+                if "nb" not in model_dir.name:
+                    continue
+            else:
+                if "nb" in model_dir.name:
+                    continue
+            model_path = list(model_dir.glob("best_model*"))[0]
+            loss = float(str(model_path).split("_")[-1].split(".pt")[0])
+            if loss < best_loss:
+                best_loss = copy.deepcopy(loss)
+                weights_path = copy.deepcopy(model_path)
+    return weights_path
 
 
-# In[13]:
+# In[7]:
 
 
-def setup_args(test_notebook):
+def setup_args():
+    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False 
     tmp_argv = copy.deepcopy(sys.argv)
     if test_notebook:
         sys.argv = [""]
@@ -93,12 +108,15 @@ def setup_args(test_notebook):
     if test_notebook:
         args.batch_size = 5
         args.max_quant_eval_epochs = 2
+        args.test_notebook=True
+    else:
+        args.test_notebook = False
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     return args
 
 
 
-# In[14]:
+# In[8]:
 
 
 def setup_models(action_space, args):
@@ -128,15 +146,15 @@ def setup_models(action_space, args):
     
 
 
-# In[15]:
+# In[10]:
 
 
 #train
 if __name__ == "__main__":
-    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
-    args = setup_args(test_notebook)
+           
+    args = setup_args()
 
-    exp_dir = setup_exp_name(test_notebook, args)
+    exp_dir = setup_exp_name(args)
     writer, models_dir = setup_dirs_logs(args, exp_dir)
     
 
@@ -144,6 +162,9 @@ if __name__ == "__main__":
 
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name, args.seed)
     args.grid_size = grid_size
+#     wp = get_weights_path("inv_model",args)
+#     print(wp)
+#     assert False
     raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model = setup_models(action_space, args)
     
     
