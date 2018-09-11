@@ -27,7 +27,7 @@ from functools import partial
 from models.base_encoder import Encoder
 
 
-# In[6]:
+# In[ ]:
 
 
 class RawPixelsEncoder(nn.Module):
@@ -56,4 +56,24 @@ class RandomWeightCNN(Encoder):
                  h_ch=h_ch,embed_len=embed_len, 
                  batch_norm=batch_norm)
         
+
+
+# In[ ]:
+
+
+# enc = Encoder()
+
+# encd = dict(enc.named_modules())
+
+# l1 = encd["encoder.0"]
+
+
+# In[ ]:
+
+
+class VAE(nn.Module):
+    def __init__(self,encoder):
+        super(VAE, self).__init__()
+        self.encoder = encoder
+        #self.decoder = 
 
