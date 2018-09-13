@@ -7,7 +7,7 @@
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
-from utils import convert_frame, bin_direction, unbin_direction, get_trans_tuple
+from utils import convert_frame, get_trans_tuple
 import numpy as np
 import random
 from itertools import product

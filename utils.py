@@ -80,31 +80,31 @@ def setup_env(env_name, seed):
 # In[6]:
 
 
-def bin_direction(direction):
-    """takes 2D unit vector of direction and bins it to 4 directions right,down,left,up
-       0: right
-       1: down
-       2: left
-       3: up """
+# def bin_direction(direction):
+#     """takes 2D unit vector of direction and bins it to 4 directions right,down,left,up
+#        0: right
+#        1: down
+#        2: left
+#        3: up """
     
-    minigrid_directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
-    binned_direction = minigrid_directions.index(list(direction))
-    return binned_direction
+#     minigrid_directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
+#     binned_direction = minigrid_directions.index(list(direction))
+#     return binned_direction
 
 
-# In[7]:
+# # In[7]:
 
 
-def unbin_direction(binned_direction):
-    """
-       0: right
-       1: down
-       2: left
-       3: up """
-    index = binned_direction
-    minigrid_directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
-    direction_vector = minigrid_directions[index]
-    return direction_vector
+# def unbin_direction(binned_direction):
+#     """
+#        0: right
+#        1: down
+#        2: left
+#        3: up """
+#     index = binned_direction
+#     minigrid_directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
+#     direction_vector = minigrid_directions[index]
+#     return direction_vector
     
 
 
