@@ -4,7 +4,7 @@
 # In[1]:
 
 
-from utils import get_trans_tuple, convert_frame, bin_direction, unbin_direction
+from utils import get_trans_tuple, convert_frame
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
@@ -30,7 +30,12 @@ class DataCollector(object):
 
         # to make the coords start at 0
         x0_coord_x, x0_coord_y  = int(self.env.agent_pos[0]), int(self.env.agent_pos[1])
-        x0_direction = bin_direction(self.env.get_dir_vec())
+        
+        """0: right
+        1: down
+        2: left
+        3: up """
+        x0_direction = self.env.agent_dir
 
 
         _, reward, done, _ = self.env.step(action)
@@ -41,7 +46,7 @@ class DataCollector(object):
         x1_coord_x, x1_coord_y = int(self.env.agent_pos[0]), int(self.env.agent_pos[1])
         trans_list.extend([x0_coord_x, x0_coord_y,x1_coord_x, x1_coord_y])
 
-        x1_direction = bin_direction(self.env.get_dir_vec())
+        x1_direction = self.env.agent_dir
         trans_list.extend([x0_direction, x1_direction])
         return Transition(*trans_list)
 
@@ -59,9 +64,8 @@ class DataCollector(object):
         trans_obj  = self._collect_datapoint(x0, action)
         return trans_obj
     def _get_desired_direction(self,desired_direction):
-        desired_direction_vec = unbin_direction(desired_direction)
-        true_direction_vec = self.env.get_dir_vec()
-        while not np.allclose(true_direction_vec,desired_direction_vec):
+        true_direction = self.env.agent_dir
+        while not np.allclose(true_direction,desired_direction):
             _ = self.env.step(0)
-            true_direction_vec = self.env.get_dir_vec()
+            true_direction = self.env.agent_dir
 
