@@ -35,26 +35,27 @@ class Encoder(nn.Module):
                  h_ch=32,embed_len=32, 
                  batch_norm=False):
         super(Encoder,self).__init__()
-        bias= False if batch_norm else True
+        self.bias= False if batch_norm else True
         self.im_wh = im_wh 
         self.in_ch = in_ch
+        self.h_ch = h_ch
         self.embed_len = embed_len
-        layers = [nn.Conv2d(in_channels=in_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1,bias=bias),
-            nn.BatchNorm2d(h_ch),
+        layers = [nn.Conv2d(in_channels=self.in_ch, out_channels=self.h_ch,
+                      kernel_size=3, stride=2, padding=1,bias=self.bias),
+            nn.BatchNorm2d(self.h_ch),
             nn.ELU(),
             
-            nn.Conv2d(in_channels=h_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1,bias=bias),
-            nn.BatchNorm2d(h_ch),
+            nn.Conv2d(in_channels=self.h_ch, out_channels=self.h_ch,
+                      kernel_size=3, stride=2, padding=1,bias=self.bias),
+            nn.BatchNorm2d(self.h_ch),
             nn.ELU(),
-            nn.Conv2d(in_channels=h_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1,bias=bias),
-            nn.BatchNorm2d(h_ch),
+            nn.Conv2d(in_channels=self.h_ch, out_channels=self.h_ch,
+                      kernel_size=3, stride=2, padding=1,bias=self.bias),
+            nn.BatchNorm2d(self.h_ch),
             nn.ELU(),
-            nn.Conv2d(in_channels=h_ch, out_channels=h_ch,
-                      kernel_size=3, stride=2, padding=1,bias=bias),
-            nn.BatchNorm2d(h_ch),
+            nn.Conv2d(in_channels=self.h_ch, out_channels=self.h_ch,
+                      kernel_size=3, stride=2, padding=1,bias=self.bias),
+            nn.BatchNorm2d(self.h_ch),
             nn.ELU()
                  ]
         if not batch_norm:
@@ -68,9 +69,13 @@ class Encoder(nn.Module):
 
     @property
     def enc_out_shape(self):
+        return np.prod(self.last_im_shape)
+    
+    @property
+    def last_im_shape(self):
         inp_shape = (1,self.in_ch,*self.im_wh)
         a = torch.randn(inp_shape)
-        return np.prod(self.encoder(a).size()[1:])
+        return self.encoder(a).size()[1:]
     
 #     def get_feature_maps(self):
 #         return self.fmaps
