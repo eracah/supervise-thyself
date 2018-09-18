@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 import data.custom_grids
 import gym
 from gym_minigrid.register import env_list
@@ -121,28 +115,39 @@ def setup_args():
 
 def setup_models(action_space, args):
 
-    raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device)
-    rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device)
+    raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device).eval()
+    rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device).eval()
     rand_cnn = Encoder(in_ch=3,
                       im_wh=args.resize_to,
                       h_ch=args.hidden_width,
                       embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(args.device)
+                      batch_norm=args.batch_norm).to(args.device).eval()
     for enc_name in args.encoders_to_eval:
         if enc_name == "inv_model":
             encoder = Encoder(in_ch=3,
                           im_wh=args.resize_to,
                           h_ch=args.hidden_width,
                           embed_len=args.embed_len,
-                          batch_norm=args.batch_norm).to(args.device)
+                          batch_norm=args.batch_norm).to(args.device).eval()
 
             inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
             model_path = get_weights_path("inv_model", args)
 
             inv_model.load_state_dict(torch.load(str(model_path)))
+#         if enc_name == "vae":
+#             encoder = Encoder(in_ch=3,
+#                           im_wh=args.resize_to,
+#                           h_ch=args.hidden_width,
+#                           embed_len=args.embed_len,
+#                           batch_norm=args.batch_norm, is_vae=True).to(args.device).eval()
+
+#             vae = VAE(encoder=encoder).to(args.device)
+#             model_path = get_weights_path("vae", args)
+
+#             vae.load_state_dict(torch.load(str(model_path)))
         
 
-    return raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model.encoder #,  q_net, target_q_net, encoder,inv_model, 
+    return raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model.encoder, vae.encoder #,  q_net, target_q_net, encoder,inv_model, 
     
 
 
