@@ -74,7 +74,7 @@ class Encoder(nn.Module):
 
     @property
     def enc_out_shape(self):
-        return np.prod(self.last_im_shape)
+        return int(np.prod(self.last_im_shape))
     
     @property
     def last_im_shape(self):
