@@ -93,11 +93,20 @@ class Decoder(nn.Module):
         return im       
         
 class VAE(nn.Module):
-    def __init__(self,encoder):
+    def __init__(self,in_ch=3,
+                          im_wh=(64,64),
+                          h_ch=32,
+                          embed_len=32,
+                          batch_norm=False):
         super(VAE, self).__init__()
-        self.encoder = encoder
-        assert encoder.is_vae == True, "the encoder for the VAE must have the is_vae flag set to true"
-        self.decoder = Decoder(encoder)
+        
+        self.encoder = Encoder(in_ch=in_ch,
+                              im_wh=im_wh,
+                              h_ch=h_ch,
+                              embed_len=embed_len,
+                              batch_norm=batch_norm,
+                              is_vae=True)
+        self.decoder = Decoder(self.encoder)
     
     def reparametrize(self, mu, logvar):
         if self.training:
@@ -114,7 +123,27 @@ class VAE(nn.Module):
         x_hat = self.decoder(z)
         return x_hat, mu, logvar
     
-    def vae_loss(self, x,xr,mu,logvar):
+
+    def get_kl_rec(self,x,xr,mu,logvar):
         kldiv = -0.5 * torch.sum(1 + logvar - mu**2 - torch.exp(logvar),dim=1)
         rec = torch.sum((xr - x)**2,dim=(1,2,3))
-        return rec.mean() + kldiv.mean()
+        return kldiv.mean(), rec.mean()
+    
+    def loss(self,x,xr,mu,logvar):
+        kldiv, rec = self.get_kl_rec(x,xr,mu,logvar)
+        return rec + kldiv
+
+class BetaVAE(VAE):
+    def __init__(self,beta=1.,in_ch=3,
+                          im_wh=(64,64),
+                          h_ch=32,
+                          embed_len=32,
+                          batch_norm=False):
+        
+        super(BetaVAE, self).__init__(in_ch, im_wh, h_ch, embed_len, batch_norm)
+        self.beta = beta
+        
+
+    def loss(self,x,xr,mu,logvar):
+        kldiv, rec = self.get_kl_rec(x,xr,mu,logvar)
+        return rec + self.beta * kldiv
