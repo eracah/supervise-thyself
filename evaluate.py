@@ -19,7 +19,7 @@ import json
 from functools import partial
 from data.tr_val_test_splitter import setup_tr_val_val_test
 from models.base_encoder import Encoder
-from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
+from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
 from models.inverse_model import InverseModel
 from utils import mkstr,write_to_config_file,convert_frame, classification_acc,setup_env, setup_dirs_logs,parse_minigrid_env_name
 from evaluations.quant_evaluation import QuantEvals
@@ -44,7 +44,7 @@ def get_weights_path(enc_name, args):
     best_loss = np.inf
     weights_path = None
     base_path = Path(".models") / Path(enc_name)
-    suffix = "_" + str(args.grid_size+2) + "_r" + str(args.resize_to[0])
+    suffix = "_" + str(args["grid_size"]+2) + "_r" + str(args["resize_to"][0])
     for model_dir in base_path.iterdir():
         if suffix in model_dir.name:
             if args.test_notebook:
@@ -109,52 +109,25 @@ def setup_args():
     return args
 
 
-
-# In[8]:
-
-
 def setup_models(action_space, args):
-
+    model_table = {"inv_model":InverseModel, "vae":VAE, "beta_vae": BetaVAE}
+    encoder_kwargs = dict(in_ch=3,im_wh=args.resize_to,h_ch=args.hidden_width, embed_len=args.embed_len,  
+                          batch_norm=args.batch_norm)
+    
     raw_pixel_enc = RawPixelsEncoder(in_ch=3,im_wh=args.resize_to).to(args.device).eval()
     rand_lin_proj = RandomLinearProjection(embed_len=args.embed_len,im_wh=args.resize_to,in_ch=3).to(args.device).eval()
-    rand_cnn = Encoder(in_ch=3,
-                      im_wh=args.resize_to,
-                      h_ch=args.hidden_width,
-                      embed_len=args.embed_len,
-                      batch_norm=args.batch_norm).to(args.device).eval()
-    for enc_name in args.encoders_to_eval:
-        if enc_name == "inv_model":
-            encoder = Encoder(in_ch=3,
-                          im_wh=args.resize_to,
-                          h_ch=args.hidden_width,
-                          embed_len=args.embed_len,
-                          batch_norm=args.batch_norm).to(args.device).eval()
-
-            inv_model = InverseModel(encoder=encoder,num_actions=len(action_space)).to(args.device)
-            model_path = get_weights_path("inv_model", args)
-
-            inv_model.load_state_dict(torch.load(str(model_path)))
-#         if enc_name == "vae":
-#             encoder = Encoder(in_ch=3,
-#                           im_wh=args.resize_to,
-#                           h_ch=args.hidden_width,
-#                           embed_len=args.embed_len,
-#                           batch_norm=args.batch_norm, is_vae=True).to(args.device).eval()
-
-#             vae = VAE(encoder=encoder).to(args.device)
-#             model_path = get_weights_path("vae", args)
-
-#             vae.load_state_dict(torch.load(str(model_path)))
-        
-
-    return raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model.encoder, vae.encoder #,  q_net, target_q_net, encoder,inv_model, 
     
+    rand_cnn = Encoder(**encoder_kwargs).to(args.device).eval()
+    encoder_table = dict(raw_pixel_enc=raw_pixel_enc, rand_lin_proj=rand_lin_proj, rand_cnn=rand_cnn)
+    
+    for enc_name in args.encoders_to_eval:
+        model = model_table["enc_name"](**encoder_kwargs).to(args.device).eval()
+        model_path = get_weights_path(enc_name, args.__dict__)
+        model.load_state_dict(torch.load(str(model_path)))
+        encoder_table[enc_name] = copy.deepcopy(model.encoder)
 
+    return encoder_table
 
-# In[10]:
-
-
-#train
 if __name__ == "__main__":
            
     args = setup_args()
@@ -167,10 +140,8 @@ if __name__ == "__main__":
 
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name, args.seed)
     args.grid_size = grid_size
-#     wp = get_weights_path("inv_model",args)
-#     print(wp)
-#     assert False
-    raw_pixel_enc, rand_lin_proj, rand_cnn, inv_model = setup_models(action_space, args)
+
+    enc_dict = setup_models(action_space, args)
     
     
 
@@ -178,16 +149,6 @@ if __name__ == "__main__":
     tr_buf, val_buf, eval_tr_buf, eval_val_buf, test_buf = setup_tr_val_val_test(env, random_policy,
                                                                                  convert_fxn, tot_examples, args.batch_size)
 
-    
-
- 
-    
-    
-
-    enc_dict = {"rand_cnn":rand_cnn, "rand_proj":rand_lin_proj, "inv_model":inv_model} #"raw_pix":raw_pixel_enc,"inv_model":encoder }
-    
-    
-    
     qevs = QuantEvals(eval_tr_buf, eval_val_buf, test_buf, writer,
                grid_size,num_directions, args)
 
