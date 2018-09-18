@@ -27,9 +27,6 @@ from functools import partial
 from models.base_encoder import Encoder
 
 
-# In[ ]:
-
-
 class RawPixelsEncoder(nn.Module):
     def __init__(self, im_wh=(64,64),in_ch=3):
         super(RawPixelsEncoder,self).__init__()
@@ -99,17 +96,25 @@ class VAE(nn.Module):
     def __init__(self,encoder):
         super(VAE, self).__init__()
         self.encoder = encoder
+        assert encoder.is_vae == True, "the encoder for the VAE must have the is_vae flag set to true"
         self.decoder = Decoder(encoder)
     
-    def reparametrization_trick(self, z):
+    def reparametrize(self, mu, logvar):
+        if self.training:
+            eps = torch.randn(*logvar.size()).to().to(mu.device)
+            std = torch.exp(0.5*logvar)
+            z = mu + eps*std
+        else:
+            z = mu
         return z
-    
+        
     def forward(self, x):
-        z = self.encoder(x)
-        h = self.reparametrization_trick(z)
-        x_hat = self.decoder(h)
-        
-        
-        
-
-
+        mu, logvar = self.encoder(x)
+        z = self.reparametrize(mu, logvar)
+        x_hat = self.decoder(z)
+        return x_hat, mu, logvar
+    
+    def vae_loss(self, x,xr,mu,logvar):
+        kldiv = -0.5 * torch.sum(1 + logvar - mu**2 - torch.exp(logvar),dim=1)
+        rec = torch.sum((xr - x)**2,dim=(1,2,3))
+        return rec.mean() + kldiv.mean()
