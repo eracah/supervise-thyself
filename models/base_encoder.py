@@ -33,12 +33,13 @@ from functools import partial
 class Encoder(nn.Module):
     def __init__(self,im_wh=(64,64),in_ch=3,
                  h_ch=32,embed_len=32, 
-                 batch_norm=False):
+                 batch_norm=False, is_vae=False):
         super(Encoder,self).__init__()
         self.bias= False if batch_norm else True
         self.im_wh = im_wh 
         self.in_ch = in_ch
         self.h_ch = h_ch
+        self.is_vae = is_vae
         self.embed_len = embed_len
         layers = [nn.Conv2d(in_channels=self.in_ch, out_channels=self.h_ch,
                       kernel_size=3, stride=2, padding=1,bias=self.bias),
@@ -66,6 +67,10 @@ class Encoder(nn.Module):
                     
         self.fc = nn.Linear(in_features=self.enc_out_shape,
                             out_features=self.embed_len)
+        if self.is_vae:
+            self.logvar_fc = nn.Linear(in_features=self.enc_out_shape,
+                            out_features=self.embed_len)
+            
 
     @property
     def enc_out_shape(self):
@@ -83,8 +88,13 @@ class Encoder(nn.Module):
     def forward(self,x):
         fmaps = self.encoder(x)
         vec = fmaps.view(fmaps.size(0),-1)
-        embedding = self.fc(vec)
-        return embedding
+        if self.is_vae and self.training:
+            mu = self.fc(vec)
+            logvar = self.logvar_fc(vec)
+            return mu, logvar
+        else:
+            embedding = self.fc(vec)
+            return embedding
 
 
 # In[3]:
