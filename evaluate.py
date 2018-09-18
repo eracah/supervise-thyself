@@ -1,3 +1,9 @@
+
+# coding: utf-8
+
+# In[1]:
+
+
 import data.custom_grids
 import gym
 from gym_minigrid.register import env_list
@@ -37,14 +43,16 @@ def setup_exp_name(args):
     return base_dir / exp_name
 
 
-# In[3]:
+
 
 
 def get_weights_path(enc_name, args):
     best_loss = np.inf
     weights_path = None
     base_path = Path(".models") / Path(enc_name)
-    suffix = "_" + str(args["grid_size"]+2) + "_r" + str(args["resize_to"][0])
+    suffix = "_" + str(args.grid_size+2) + "_r" + str(args.resize_to[0])
+    if not base_path.exists():
+        return None
     for model_dir in base_path.iterdir():
         if suffix in model_dir.name:
             if args.test_notebook:
@@ -58,6 +66,7 @@ def get_weights_path(enc_name, args):
             if loss < best_loss:
                 best_loss = copy.deepcopy(loss)
                 weights_path = copy.deepcopy(model_path)
+            
     return weights_path
 
 
@@ -94,7 +103,7 @@ def setup_args():
     parser.add_argument("--decoder_batches", type=int, default=1000)
     parser.add_argument("--collect_data",action="store_true")
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--encoders_to_eval",type=str, nargs='+', default=["inv_model"])
+    parser.add_argument("--encoders_to_eval",type=str, nargs='+', default=["inv_model","vae","beta_vae"])
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
 
@@ -121,12 +130,19 @@ def setup_models(action_space, args):
     encoder_table = dict(raw_pixel_enc=raw_pixel_enc, rand_lin_proj=rand_lin_proj, rand_cnn=rand_cnn)
     
     for enc_name in args.encoders_to_eval:
-        model = model_table["enc_name"](**encoder_kwargs).to(args.device).eval()
-        model_path = get_weights_path(enc_name, args.__dict__)
-        model.load_state_dict(torch.load(str(model_path)))
+        model = model_table[enc_name](**encoder_kwargs).to(args.device).eval()
+        model_path = get_weights_path(enc_name, args)
+        if model_path:
+            model.load_state_dict(torch.load(str(model_path)))
+        else:
+            print("No weights available for %s. Using randomly initialized %s"%(enc_name,enc_name))
         encoder_table[enc_name] = copy.deepcopy(model.encoder)
 
     return encoder_table
+
+
+# In[3]:
+
 
 if __name__ == "__main__":
            
