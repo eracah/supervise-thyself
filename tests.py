@@ -23,6 +23,7 @@ from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 import numpy as np
 import warnings
+import argparse
 
 
 # In[3]:
@@ -31,7 +32,7 @@ import warnings
 class TestReplayBuffer(unittest.TestCase):
     
     def test_conflicting_buffer_fill(self):
-        bf = BufferFiller()
+        bf = BufferFiller(env=gym.make(args.env_name))
         rb = bf.fill(size=100)
 
         val_rb = bf.fill_with_unvisited_states(size=50,visited_buffer=rb)
@@ -50,13 +51,13 @@ class TestReplayBuffer(unittest.TestCase):
         self.assertTrue(vts.isdisjoint(tts))
 
     def test_fill_buffer_with_rollouts(self):
-        bf = BufferFiller()
+        bf = BufferFiller(env=gym.make(args.env_name))
         size=100
         rb = bf.fill(size)
         self.assertEqual(len(rb), size)
 
     def test_fill_with_list(self):
-        bf = BufferFiller()
+        bf = BufferFiller(env=gym.make(args.env_name))
 
         rb = bf.fill(size=100)
 
@@ -74,7 +75,7 @@ class TestReplayBuffer(unittest.TestCase):
         
     def test_split_buffer(self):
         prop = 0.7
-        bf = BufferFiller()
+        bf = BufferFiller(env=gym.make(args.env_name))
 
         rb = bf.fill(size=200)
 
@@ -90,7 +91,7 @@ class TestReplayBuffer(unittest.TestCase):
 class TestIterators(unittest.TestCase):
 
     def test_unused_points_iterator(self):
-        env = gym.make("MiniGrid-Empty-6x6-v0")
+        env = gym.make(args.env_name)
         num_dirs = 4
         num_actions = 3
         grid_list = range(1,env.grid_size - 1)
@@ -104,7 +105,7 @@ class TestIterators(unittest.TestCase):
         a = ch(act_list,size=size)
 
         used = list(zip(x,y,d,a))
-        ui = UnusedPointsIterator(used)
+        ui = UnusedPointsIterator(used,env=env)
 
         unused = ui.get_unused_datapoints(used, env)
         unused = []
@@ -118,7 +119,7 @@ class TestIterators(unittest.TestCase):
 
     def test_policy_iterator(self):
 
-        pi = PolicyIterator()
+        pi = PolicyIterator(env=gym.make(args.env_name))
 
         # test continuing where you left off
         last_step = 0
@@ -151,7 +152,7 @@ class TestIterators(unittest.TestCase):
 
         list_of_points = list(zip(x,y,d,a))
         #print(list_of_points)
-        list_it = ListIterator(list_of_points)
+        list_it = ListIterator(list_of_points,env=gym.make(args.env_name))
         test_list = []
         for i,t in enumerate(list_it):
             trans_tup = tuple([getattr(t,k) for k in ["x0_coord_x",
@@ -171,8 +172,8 @@ class TestIterators(unittest.TestCase):
 
 class TestCollectors(unittest.TestCase):
     def test_collect_specific_datapoint(self):
-        dc = DataCollector()
-        env = gym.make("MiniGrid-Empty-6x6-v0")
+        dc = DataCollector(env=gym.make(args.env_name))
+        env = gym.make(args.env_name)
         grid_list = range(1,5)
         dir_list = range(4)
         act_list = range(3)
@@ -192,7 +193,7 @@ class TestCollectors(unittest.TestCase):
             self.assertEqual(inp_tup, out_tup)
 
     def test_collect_data_point_per_policy(self):
-        dc = DataCollector()
+        dc = DataCollector(env=gym.make(args.env_name))
         for i in range(100):
             trans = dc.collect_data_point_per_policy()
             self.assertEqual(len(trans),11)
@@ -204,8 +205,7 @@ class TestCollectors(unittest.TestCase):
 class TestDatasetReproducibility(unittest.TestCase):
     def test_tr_set_match(self):
         seed = 10
-        env_name = 'MiniGrid-Empty-6x6-v0'
-        env, action_space, grid_size, num_directions,        tot_examples, random_policy = setup_env(env_name, seed = seed)
+        env, action_space, grid_size, num_directions,        tot_examples, random_policy = setup_env(args.env_name, seed = seed)
         
         convert_fxn = partial(convert_frame)
         
@@ -213,7 +213,7 @@ class TestDatasetReproducibility(unittest.TestCase):
                                                      convert_fxn, tot_examples, 
                                                      batch_size=10, verbose=False)
         
-        env, action_space, grid_size, num_directions,        tot_examples, random_policy = setup_env(env_name, seed = seed)
+        env, action_space, grid_size, num_directions,        tot_examples, random_policy = setup_env(args.env_name, seed = seed)
         
         tr_buf2, _ = setup_tr_val_val_test(env, random_policy,
                                                      convert_fxn, tot_examples, 
@@ -232,18 +232,20 @@ class TestDatasetReproducibility(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    
-    if "ipykernel_launcher" in sys.argv[0]:
-        tmp_argv = copy.deepcopy(sys.argv)
+    test_notebook = True if "ipykernel_launcher" in sys.argv[0] else False
+    tmp_argv = copy.deepcopy(sys.argv)
+    if test_notebook:
         sys.argv = [""]
-        try:
 
-            unittest.main()
-        except SystemExit:
-            pass
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--size",type=int, default=100),
+    args = parser.parse_args()
+    args.env_name = 'MiniGrid-Empty-%ix%i-v0'%(args.size,args.size)
+    try:
+        unittest.main()
+    except SystemExit:
+        pass
 
 
         sys.argv = tmp_argv
-    else:
-        unittest.main()
 
