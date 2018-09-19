@@ -77,37 +77,6 @@ def setup_env(env_name, seed):
     return env, action_space, grid_size, num_directions, tot_examples, random_policy
 
 
-# In[6]:
-
-
-# def bin_direction(direction):
-#     """takes 2D unit vector of direction and bins it to 4 directions right,down,left,up
-#        0: right
-#        1: down
-#        2: left
-#        3: up """
-    
-#     minigrid_directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
-#     binned_direction = minigrid_directions.index(list(direction))
-#     return binned_direction
-
-
-# # In[7]:
-
-
-# def unbin_direction(binned_direction):
-#     """
-#        0: right
-#        1: down
-#        2: left
-#        3: up """
-#     index = binned_direction
-#     minigrid_directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
-#     direction_vector = minigrid_directions[index]
-#     return direction_vector
-    
-
-
 # In[8]:
 
 
@@ -242,44 +211,4 @@ def plot_test(x0s,x1s,ys,rs, label_list):
         for i in range(x0s.size()[0]):
             plot(x0s[i],x1s[i],ys[i],i)
     plt.show()
-
-
-# In[2]:
-
-
-# if __name__ == "__main__":
-#     from replay_buffer import create_and_fill_replay_buffer
-    
-#     env = gym.make("MiniGrid-Empty-6x6-v0")
-#     rb = create_and_fill_replay_buffer(env=env,size=10, 
-#                                      other_buffers=[])
-
-#     used = set([(t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction) for t in rb.memory])
-
-#     unused = []
-#     for t in unused_datapoints_iterator(other_buffer=rb,env=env ):
-#         unused.append((t.x0_coord_x,t.x0_coord_y,t.a,t.x0_direction))
-#     unused_set = set(unused)
-
-#     assert used.isdisjoint(unused_set)
-#     assert len(used.union(unused_set)) == (env.grid_size - 2)**2 * 3 * 4
-
-
-# In[ ]:
-
-
-#directions = [[1, 0],[ 0, -1],[-1 , 0],[0, 1]]
-
-# ind_to_str = dict(zip(range(4),["right","down","left","up"]))
-
-# env = gym.make("MiniGrid-Empty-6x6-v0")
-
-# _=env.reset()
-# #print(env.get_dir_vec())
-# for i in range(4):
-#     direc = list(env.get_dir_vec())
-#     direc_label = dirs.index(direc)
-#     print(direc,direc_label, ind_to_str[direc_label])
-#     _ = env.step(0)
-
 
