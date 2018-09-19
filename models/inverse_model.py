@@ -16,7 +16,7 @@ class ActionPredictor(nn.Module):
         
 
 class InverseModel(nn.Module):
-    def __init__(self, in_ch=3, im_wh=(64,64), h_ch=32, embed_len=32, batch_norm=False, num_actions=3):
+    def __init__(self, in_ch=3, im_wh=(64,64), h_ch=32, embed_len=32, batch_norm=False, num_actions=3, **kwargs):
         super(InverseModel,self).__init__()
         self.encoder = Encoder(in_ch=in_ch, im_wh=im_wh, h_ch=h_ch, embed_len=embed_len, batch_norm=batch_norm)
         self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
