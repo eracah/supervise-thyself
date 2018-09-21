@@ -1,31 +1,20 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
-from utils import convert_frame, get_trans_tuple
+from utils import convert_frame
+from data.collectors import get_trans_tuple
 import numpy as np
 import random
 from itertools import product
 from data.collectors import DataCollector
 
 
-# In[2]:
-
-
-def create_zip_all(grid_size=(6,6),num_directions=4, num_actions=3):
+def create_zip_all(grid_size=(6,6),num_directions=4):
     all_coord_x,all_coord_y = range(1,grid_size[0] - 1), range(1,grid_size[1] - 1)
     all_directions = range(num_directions)
-    all_actions = range(num_actions)
     
-    return product(all_coord_x,all_coord_y,all_directions,all_actions)
+    return product(all_coord_x,all_coord_y,all_directions)
 
-
-# In[3]:
 
 
 class BaseIterator(object):
@@ -50,44 +39,36 @@ class BaseIterator(object):
     
     
 
-
-# In[4]:
-
-
 class PolicyIterator(BaseIterator):
     """iterates datapoints following a policy"""
     def __init__(self, policy=lambda x0: np.random.choice(3),
                         env=gym.make("MiniGrid-Empty-6x6-v0"),
-                     convert_fxn=convert_frame):
+                     convert_fxn=convert_frame,frames_per_trans=2,stop_at_done=True ):
         super(PolicyIterator,self).__init__(env,convert_fxn)
-        self.dc = DataCollector(policy=policy,env=env,convert_fxn =convert_fxn)
+        self.dc = DataCollector(policy=policy,env=env,convert_fxn =convert_fxn,frames_per_trans=frames_per_trans)
         self.policy = policy
         self.done = False
+        self.stop_at_done = stop_at_done
         self.reset()
         
 
     def reset(self):
         _ = self.env.reset()
-        #self.env.seed(np.random.randint(100))
         self.env.agent_pos = self.env.place_agent(size=(self.env.grid_size,self.env.grid_size ))
         self.done = False
         
     def _next(self):
-        if not self.done:
-            transition = self.dc.collect_data_point_per_policy()
-            self.done = transition.done
-            return transition
-        else:
-            raise StopIteration()
+        if self.done:
+            if self.stop_at_done:
+                raise StopIteration()
+            else:
+                self.reset()
+                
+        transition = self.dc.collect_transition_per_the_policy()
+        self.done = True in transition.dones
+        return transition
     
     
-    
-    
-
-
-# In[5]:
-
-
 class ListIterator(BaseIterator):
     """takes a list of tuples (coord,direction,action) and 
     renders that to full s,a,s transitions"""
@@ -103,10 +84,9 @@ class ListIterator(BaseIterator):
     
     def _next(self):
         if self.i < len(self.list_of_points):
-            (coord_x,coord_y, direction, action) = self.list_of_points[self.i]
+            (coord_x,coord_y, direction) = self.list_of_points[self.i]
             transition = self.dc.collect_specific_datapoint((coord_x ,coord_y),
-                                                    direction,
-                                                    action)
+                                                    direction)
 
             self.i += 1
             return transition
@@ -114,10 +94,6 @@ class ListIterator(BaseIterator):
             raise StopIteration()
         
         
-
-
-# In[6]:
-
 
 class UnusedPointsIterator(ListIterator):
     """takes a s,a,s list and iterates all state,action,state
