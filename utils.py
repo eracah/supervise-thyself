@@ -114,22 +114,6 @@ def convert_frames(frames,resize_to=(64,64),to_tensor=False):
         
 
 
-# In[10]:
-
-
-def get_trans_tuple():
-        tuple_fields = ['x0','x1','a', 'r', 'done']
-        
-
-        tuple_fields.extend(['x0_coord_x', 'x0_coord_y', 'x1_coord_x', 'x1_coord_y'])
-
-        tuple_fields.extend(["x0_direction","x1_direction"])
-        
-        Transition = namedtuple("Transition",tuple(tuple_fields))
-        return Transition
-        
-
-
 # In[18]:
 
 
