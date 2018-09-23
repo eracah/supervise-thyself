@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[8]:
-
-
 from collections import namedtuple
 import torch
 import numpy as np
@@ -14,15 +8,10 @@ import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 from functools import partial
-from utils import get_trans_tuple
+from data.collectors import get_trans_tuple, DataCollector
 from functools import partial
 from data.iterators import PolicyIterator, ListIterator, UnusedPointsIterator
-#from torch.utils.data import 
 import copy
-
-
-# In[1]:
-
 
 class ReplayMemory(object):
     """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample
@@ -43,9 +32,7 @@ class ReplayMemory(object):
         buf.memory = buf.memory + other_buffer.memory
         return buf
     
-
-        
-    
+   
     def push(self, *args):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
@@ -54,43 +41,40 @@ class ReplayMemory(object):
         self.position = (self.position + 1) % self.capacity
 
     
-    def sample(self, batch_size=None):
+    def sample(self, batch_size=None, chunk_size=None):
         batch_size = self.batch_size if batch_size is None else batch_size
-        trans = random.sample(self.memory, batch_size)
+        trans = random.sample(self.memory, batch_size)        
         return self._convert_raw_sample(trans)
         
     
     def _convert_raw_sample(self,transitions):
-        trans_batch = self.Transition(*zip(*transitions))
-        tb_dict = trans_batch._asdict()
+        """converts 8-bit RGB to float and pytorch tensor"""
+        # puts all trans objects into one trans object
+        #trans_batch = self.Transition(*zip(*transitions))
+        list_of_fields = [list(zip(*field)) for field in zip(*transitions)]
+        trans = self.Transition(*list_of_fields)
+        tb_dict = trans._asdict()
+        #return tb_dict,trans
 
-        tb_dict["x0_coord_x"] = torch.tensor(trans_batch.x0_coord_x).long().to(self.DEVICE)
-        tb_dict["x0_coord_y"] = torch.tensor(trans_batch.x0_coord_y).long().to(self.DEVICE)
-        tb_dict["x1_coord_x"] = torch.tensor(trans_batch.x1_coord_x).long().to(self.DEVICE)
-        tb_dict["x1_coord_y"] = torch.tensor(trans_batch.x1_coord_y).long().to(self.DEVICE)
-
-        tb_dict["x0_direction"] = torch.tensor(trans_batch.x0_direction).long().to(self.DEVICE)
-        tb_dict["x1_direction"] = torch.tensor(trans_batch.x1_direction).long().to(self.DEVICE)
-
-
-            
-        tb_dict["x0"] = convert_frames(np.asarray(trans_batch.x0),to_tensor=True,resize_to=(-1,-1)).to(self.DEVICE)
-        tb_dict["x1"] = convert_frames(np.asarray(trans_batch.x1),to_tensor=True,resize_to=(-1,-1)).to(self.DEVICE)
-        tb_dict["a"] = torch.from_numpy(np.asarray(trans_batch.a)).to(self.DEVICE)
-        tb_dict["r"] = torch.from_numpy(np.asarray(trans_batch.r)).to(self.DEVICE)
-        
+        tb_dict["x_coords"] = torch.tensor(trans.x_coords).long().to(self.DEVICE)
+        tb_dict["y_coords"] = torch.tensor(trans.y_coords).long().to(self.DEVICE)
+        tb_dict["directions"] = torch.tensor(trans.directions).long().to(self.DEVICE)
+        tb_dict["xs"] = torch.stack([convert_frames(np.asarray(trans.xs[i]),to_tensor=True,resize_to=(-1,-1)) for
+                                                     i in range(len(trans.xs))]).to(self.DEVICE)
+        tb_dict["actions"] = torch.from_numpy(np.asarray(trans.actions)).to(self.DEVICE)
+        tb_dict["rewards"] = torch.from_numpy(np.asarray(trans.rewards)).to(self.DEVICE)
+        tb_dict["dones"] = torch.tensor(trans.dones)
         batch = self.Transition(*list(tb_dict.values()))
         return batch
 
-    def get_zipped_list(self,keys=["x0_coord_x",
-                                                "x0_coord_y",
-                                                "x0_direction",
-                                                "a"], unique=False):
+    def get_zipped_list(self,keys=["x_coords",
+                                                "y_coords",
+                                                "directions"], unique=False):
 
 
-    
         one_big_trans = self.Transition(*zip(*self.memory))
-        separated_fields = [one_big_trans._asdict()[key] for key in keys ]
+        #grab each field and concatenate all lists
+        separated_fields = [np.concatenate(one_big_trans._asdict()[key]) for key in keys ]
         ret_list = list(zip(*separated_fields))
         if unique:
             ret_list = list(set(ret_list))
@@ -110,10 +94,6 @@ class ReplayMemory(object):
     
     def __len__(self):
         return len(self.memory)
-
-
-# In[ ]:
-
 
 class BufferFiller(object):
     """creates and fills replay buffers with transitions"""
@@ -144,12 +124,13 @@ class BufferFiller(object):
     def make_empty_buffer(self):
         return ReplayMemory(capacity=self.capacity, batch_size=self.batch_size)
     
-    def fill(self,size):
+    def fill(self,size, frames_per_trans=2):
         """fill with transitions by just following a policy"""
         buffer = self.make_empty_buffer()
         iterator = PolicyIterator(policy=self.policy,
                                   env=self.env, 
-                                  convert_fxn=self.convert_fxn)
+                                  convert_fxn=self.convert_fxn,
+                                  frames_per_trans=frames_per_trans)
         buffer = self.fill_using_iterator(buffer,size,iterator)
         return buffer  
 
@@ -193,5 +174,103 @@ class BufferFiller(object):
                     return buffer
             iterator.reset()
         return buffer
+
+if __name__ == "__main__":
+    batch_size = 16
+    frames_per_trans = 3
+    numb_trans = 160
+    dc = DataCollector(frames_per_trans=frames_per_trans)
+
+    rb = ReplayMemory(batch_size=batch_size)
+
+    for i in range(numb_trans):
+        trans = dc.collect_transition_per_the_policy()
+        rb.push(*trans)
+
+    assert len(rb) == numb_trans
+    tb= rb.sample(batch_size=batch_size)
+
+    assert tb.x_coords.shape == (frames_per_trans,batch_size)
+    assert tb.y_coords.shape == (frames_per_trans,batch_size)
+    assert tb.directions.shape == (frames_per_trans,batch_size)
+    assert tb.actions.shape == (frames_per_trans -1 ,batch_size)
+    assert tb.rewards.shape == (frames_per_trans -1 ,batch_size)
+    assert tb.xs.shape[:2] == (frames_per_trans,batch_size)
+
+    for t in rb:
+        assert t.x_coords.shape == (frames_per_trans,batch_size)
+        assert t.y_coords.shape == (frames_per_trans,batch_size)
+        assert t.directions.shape == (frames_per_trans,batch_size)
+        assert t.actions.shape == (frames_per_trans -1 ,batch_size)
+        assert t.rewards.shape == (frames_per_trans -1 ,batch_size)
+        assert t.xs.shape[:2] == (frames_per_trans,batch_size)
+
+    zl = rb.get_zipped_list()
+    assert len(zl) == numb_trans * frames_per_trans
+    assert len(zl[0]) == frames_per_trans
+    assert len(zl[-1]) == frames_per_trans
+
+if __name__ == "__main__":
+
+
+    batch_size = 8
+    frames_per_trans = 4
+    numb_trans = 16
+    
+    
+    bf = BufferFiller(batch_size=batch_size)
+    rb = bf.fill(numb_trans,frames_per_trans=frames_per_trans)
+    
+    assert len(rb) == numb_trans
+    tb= rb.sample(batch_size=batch_size)
+    assert tb.x_coords.shape == (frames_per_trans,batch_size)
+    assert tb.y_coords.shape == (frames_per_trans,batch_size)
+    assert tb.directions.shape == (frames_per_trans,batch_size)
+    assert tb.actions.shape == (frames_per_trans -1 ,batch_size)
+    assert tb.rewards.shape == (frames_per_trans -1 ,batch_size)
+    assert tb.xs.shape[:2] == (frames_per_trans,batch_size)
+
+    for i,t in enumerate(rb):
+        
+        assert t.x_coords.shape == (frames_per_trans,batch_size)
+        assert t.y_coords.shape == (frames_per_trans,batch_size)
+        assert t.directions.shape == (frames_per_trans,batch_size)
+        assert t.actions.shape == (frames_per_trans -1 ,batch_size)
+        assert t.rewards.shape == (frames_per_trans -1 ,batch_size)
+        assert t.xs.shape[:2] == (frames_per_trans,batch_size)
+
+    zl = rb.get_zipped_list()
+    assert len(zl) == numb_trans * frames_per_trans
+    assert len(zl[0]) == 3
+    assert len(zl[-1]) == 3
+    
+    
+
+if __name__ == "__main__":
+    u_size = 40
+    rbu = bf.fill_with_unvisited_states(rb,size=u_size)
+    assert len(rbu) == u_size
+    tbu = rbu.sample(batch_size=batch_size)
+
+    assert tbu.x_coords.shape == (1,batch_size)
+    assert tbu.y_coords.shape == (1,batch_size)
+    assert tbu.directions.shape == (1,batch_size)
+    assert tbu.actions.shape == (0,)
+    assert tbu.rewards.shape == (0,)
+    assert tbu.xs.shape[:2] == (1,batch_size)
+
+    for t in rbu:
+        assert t.x_coords.shape == (1,batch_size)
+        assert t.y_coords.shape == (1,batch_size)
+        assert t.directions.shape == (1,batch_size)
+        assert t.actions.shape == (0,)
+        assert t.rewards.shape == (0,)
+        assert t.xs.shape[:2] == (1,batch_size)
+
+    zl = rbu.get_zipped_list()
+    assert len(zl) == u_size
+    assert len(zl[0]) == 3
+    assert len(zl[-1]) == 3
+
 
 
