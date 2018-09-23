@@ -4,6 +4,12 @@
 # In[1]:
 
 
+
+# coding: utf-8
+
+# In[1]:
+
+
 import data.custom_grids
 import gym
 from gym_minigrid.register import env_list
@@ -64,7 +70,7 @@ def setup_env(env_name, seed):
         action_space = range(3)
         grid_size = env.grid_size - 2
         num_directions = 4
-        tot_examples = grid_size**2 * num_directions * len(action_space)
+        tot_examples = grid_size**2 * num_directions
     else:
         action_space = list(range(env.action_space.n))
         grid_size = None
@@ -195,4 +201,5 @@ def plot_test(x0s,x1s,ys,rs, label_list):
         for i in range(x0s.size()[0]):
             plot(x0s[i],x1s[i],ys[i],i)
     plt.show()
+
 
