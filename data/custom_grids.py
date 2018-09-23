@@ -51,3 +51,11 @@ register(
     entry_point='data.custom_grids:EmptyEnv100x100'
 )
 
+class EmptyEnv128x128(EmptyEnv):
+    def __init__(self):
+        super().__init__(size=128)
+
+register(
+    id='MiniGrid-Empty-128x128-v0',
+    entry_point='data.custom_grids:EmptyEnv128x128'
+)
