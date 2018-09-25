@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[2]:
-
-
 import torch
 from torch import nn
 import torch.functional as F
@@ -23,9 +17,8 @@ from functools import partial
 
 def eval_iter(encoder,val_buf):
     for batch in val_buf:
-        f0 = encoder(batch.x0).detach()
-        f1 = encoder(batch.x1).detach() 
-        yield batch, f0,f1
+        f = encoder(batch.xs[0]).detach()
+        yield batch, f
 
 
 # In[3]:
@@ -92,12 +85,12 @@ class QuantEval(object): #it's a god class
         
         self.iter = eval_iter
         
-    def one_iter(self, batch, f0, update_weights=True):
+    def one_iter(self, batch, f, update_weights=True):
         name = self.predicted_value_name
         if update_weights:
             self.opt.zero_grad()
-        pred = self.clsf(f0)
-        true = getattr(batch, name)
+        pred = self.clsf(f)
+        true = getattr(batch, name)[0]
         loss = self.clsf.get_loss(pred, true)
             
             
@@ -110,8 +103,8 @@ class QuantEval(object): #it's a god class
     def one_epoch(self, buffer,mode="train"):
         update_weights = True if mode=="train" else False
         losses, accs = [], []
-        for batch, f0, f1 in self.iter(self.encoder,buffer):
-            loss,acc = self.one_iter(batch, f0, update_weights=update_weights)
+        for batch, f in self.iter(self.encoder,buffer):
+            loss,acc = self.one_iter(batch, f, update_weights=update_weights)
             losses.append(loss)
             accs.append(acc)
         return np.mean(losses), np.mean(accs), self.clsf.state_dict()
@@ -271,7 +264,7 @@ class QuantEvals(object):
         self.test_buf = test_buf
         self.args = args
         self.writer = writer
-        self.predicted_value_names = ["x0_coord_x","x0_coord_y","x0_direction"]
+        self.predicted_value_names = ["x_coords","y_coords","directions"]
         self.class_dict = dict(zip(self.predicted_value_names, [grid_size,grid_size,num_directions]))
     
     def get_hyperparam_settings(self):
