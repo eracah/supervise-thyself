@@ -1,14 +1,13 @@
 from data.replay_buffer import BufferFiller
 from utils import setup_env, convert_frame
 
-def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples, batch_size, frames_per_trans, just_train=False, verbose=True):
+def setup_tr_val_val_test(env, policy, convert_fxn, tot_examples, batch_size, frames_per_trans=2, just_train=False, verbose=True):
 
     
     bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy,
                       batch_size=batch_size)
 
 
-    frames_per_trans = 3
     tr_val_prop = 0.7
     num_tr_val = int((0.7*tot_examples) / frames_per_trans)
     tr_val_rb = bf.fill(num_tr_val, frames_per_trans=frames_per_trans)
