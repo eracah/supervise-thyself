@@ -22,9 +22,9 @@ class InverseModel(nn.Module):
         self.encoder = Encoder(in_ch=in_ch, im_wh=im_wh, h_ch=h_ch, embed_len=embed_len, batch_norm=batch_norm)
         self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
     
-    def forward(self,x0,x1):
-        f0 = self.encoder(x0)
-        f1 = self.encoder(x1)
+    def forward(self,xs):
+        f0 = self.encoder(xs[0])
+        f1 = self.encoder(xs[1])
         fboth = torch.cat([f0,f1],dim=-1)
         return self.ap(fboth)
     
@@ -32,7 +32,7 @@ class InverseModel(nn.Module):
         # for now just select the first two frames (but maybe in the future we could select every possible frame
         # or some combination of them)
         
-        pred = self.forward(trans.xs[0],trans.xs[1])
+        pred = self.forward(trans.xs)
         true = trans.actions[0]
         acc = classification_acc(logits=pred,true=true)
         loss = nn.CrossEntropyLoss()(pred,true)
