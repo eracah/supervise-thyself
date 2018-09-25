@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[7]:
 
 
 import random
@@ -30,7 +30,7 @@ from data.tr_val_test_splitter import setup_tr_val_val_test
 import os
 
 
-# In[2]:
+# In[8]:
 
 
 def setup_args(test_notebook):
@@ -41,14 +41,14 @@ def setup_args(test_notebook):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-6x6-v0'),
+    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-8x8-v0'),
     parser.add_argument("--resize_to",type=int, nargs=2, default=[96, 96])
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=100000)
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--model",type=str,default="vae")
+    parser.add_argument("--model",type=str,default="inv_model")
     parser.add_argument("--beta",type=float,default=1.0)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
@@ -63,7 +63,7 @@ def setup_args(test_notebook):
     return args
 
 
-# In[3]:
+# In[9]:
 
 
 class Trainer(object):
@@ -86,16 +86,7 @@ class Trainer(object):
     def one_iter(self, trans, update_weights=True):
         if update_weights:
             self.opt.zero_grad()
-        if self.model_name == "inv_model":
-            pred = self.model(trans.x0,trans.x1)
-            true = trans.a
-            loss =  self.model.loss(pred,true)
-            acc = classification_acc(logits=pred,true=true)
-        elif self.model_name == "vae" or self.model_name == "beta_vae":
-            pred = self.model(trans.x0)
-            true = trans.x0
-            loss = self.model.loss(true, *pred)
-            acc = 0.0
+        loss, acc = self.model.loss_acc(trans)
         if update_weights:
             loss.backward()
             self.opt.step()
@@ -160,7 +151,7 @@ def setup_exp_name(test_notebook, args):
     
 
 
-# In[4]:
+# In[16]:
 
 
 if __name__ == "__main__":
@@ -178,7 +169,8 @@ if __name__ == "__main__":
 
     print("starting to load buffers")
     tr_buf, val_buf = setup_tr_val_val_test(env, random_policy, 
-                                 convert_fxn, tot_examples,args.batch_size,just_train=True)
+                                 convert_fxn, tot_examples,args.batch_size,just_train=True, frames_per_trans=3)
+
     print("done loading buffers")
     
 
