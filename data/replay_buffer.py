@@ -69,15 +69,24 @@ class ReplayMemory(object):
 
     def get_zipped_list(self,keys=["x_coords",
                                                 "y_coords",
-                                                "directions"], unique=False):
+                                                "directions"], unique=False, concatenate=True):
 
 
         one_big_trans = self.Transition(*zip(*self.memory))
         #grab each field and concatenate all lists
-        separated_fields = [np.concatenate(one_big_trans._asdict()[key]) for key in keys ]
+        separated_fields = [one_big_trans._asdict()[key] for key in keys ]
+        if concatenate:
+            separated_fields = [np.concatenate(field) for field in separated_fields]
         ret_list = list(zip(*separated_fields))
         if unique:
+#             if not concatenate:
+#                 #concatenate each transition into one list and take set of it
+#                 unique_ret_list = list(set([tuple(np.concatenate(r)) for r in ret_list]))
+#                 # resplit back into list
+#                 ret_list = [[list(a) for a in np.array_split(np.asarray(url),len(keys))] for url in unique_ret_list]
+#             else:
             ret_list = list(set(ret_list))
+            
         return ret_list
     
     def __iter__(self):
@@ -109,15 +118,15 @@ class BufferFiller(object):
         
 
     def split(self, buffer, proportion):
-        unique_coords = copy.deepcopy(list(set(buffer.get_zipped_list(unique=True))))
-        len_coords = len(unique_coords)
-        split_ind = int(proportion*len_coords)
-        tr_list = unique_coords[:split_ind]
-
-        val_list = unique_coords[split_ind:]
-        buf1 = self.fill_with_list(tr_list)
-        buf2 = self.fill_with_list(val_list)
-        del buffer
+        buf1 = buffer
+#         unique_coords = copy.deepcopy(buffer.get_zipped_list(unique=True,concatenate=False))
+#         len_coords = len(unique_coords)
+        len_mem = len(buf1.memory)
+        split_ind = int(proportion*len_mem)
+        random.shuffle(buf1.memory)
+        buf2 = copy.deepcopy(buf1)
+        buf2.memory[:split_ind] = []
+        buf1.memory[split_ind:] = []
         return buf1, buf2
         
         
@@ -137,7 +146,7 @@ class BufferFiller(object):
     def fill_with_unvisited_states(self, visited_buffer,size):
         """fill with transitions not present in 'visited_buffer' """
         buffer = self.make_empty_buffer()
-        visited_list = copy.deepcopy(visited_buffer.get_zipped_list())
+        visited_list = copy.deepcopy(visited_buffer.get_zipped_list(concatenate=True))
         iterator = UnusedPointsIterator(visited_list, 
                                         env=self.env,
                                         convert_fxn=self.convert_fxn)
@@ -174,103 +183,3 @@ class BufferFiller(object):
                     return buffer
             iterator.reset()
         return buffer
-
-if __name__ == "__main__":
-    batch_size = 16
-    frames_per_trans = 3
-    numb_trans = 160
-    dc = DataCollector(frames_per_trans=frames_per_trans)
-
-    rb = ReplayMemory(batch_size=batch_size)
-
-    for i in range(numb_trans):
-        trans = dc.collect_transition_per_the_policy()
-        rb.push(*trans)
-
-    assert len(rb) == numb_trans
-    tb= rb.sample(batch_size=batch_size)
-
-    assert tb.x_coords.shape == (frames_per_trans,batch_size)
-    assert tb.y_coords.shape == (frames_per_trans,batch_size)
-    assert tb.directions.shape == (frames_per_trans,batch_size)
-    assert tb.actions.shape == (frames_per_trans -1 ,batch_size)
-    assert tb.rewards.shape == (frames_per_trans -1 ,batch_size)
-    assert tb.xs.shape[:2] == (frames_per_trans,batch_size)
-
-    for t in rb:
-        assert t.x_coords.shape == (frames_per_trans,batch_size)
-        assert t.y_coords.shape == (frames_per_trans,batch_size)
-        assert t.directions.shape == (frames_per_trans,batch_size)
-        assert t.actions.shape == (frames_per_trans -1 ,batch_size)
-        assert t.rewards.shape == (frames_per_trans -1 ,batch_size)
-        assert t.xs.shape[:2] == (frames_per_trans,batch_size)
-
-    zl = rb.get_zipped_list()
-    assert len(zl) == numb_trans * frames_per_trans
-    assert len(zl[0]) == frames_per_trans
-    assert len(zl[-1]) == frames_per_trans
-
-if __name__ == "__main__":
-
-
-    batch_size = 8
-    frames_per_trans = 4
-    numb_trans = 16
-    
-    
-    bf = BufferFiller(batch_size=batch_size)
-    rb = bf.fill(numb_trans,frames_per_trans=frames_per_trans)
-    
-    assert len(rb) == numb_trans
-    tb= rb.sample(batch_size=batch_size)
-    assert tb.x_coords.shape == (frames_per_trans,batch_size)
-    assert tb.y_coords.shape == (frames_per_trans,batch_size)
-    assert tb.directions.shape == (frames_per_trans,batch_size)
-    assert tb.actions.shape == (frames_per_trans -1 ,batch_size)
-    assert tb.rewards.shape == (frames_per_trans -1 ,batch_size)
-    assert tb.xs.shape[:2] == (frames_per_trans,batch_size)
-
-    for i,t in enumerate(rb):
-        
-        assert t.x_coords.shape == (frames_per_trans,batch_size)
-        assert t.y_coords.shape == (frames_per_trans,batch_size)
-        assert t.directions.shape == (frames_per_trans,batch_size)
-        assert t.actions.shape == (frames_per_trans -1 ,batch_size)
-        assert t.rewards.shape == (frames_per_trans -1 ,batch_size)
-        assert t.xs.shape[:2] == (frames_per_trans,batch_size)
-
-    zl = rb.get_zipped_list()
-    assert len(zl) == numb_trans * frames_per_trans
-    assert len(zl[0]) == 3
-    assert len(zl[-1]) == 3
-    
-    
-
-if __name__ == "__main__":
-    u_size = 40
-    rbu = bf.fill_with_unvisited_states(rb,size=u_size)
-    assert len(rbu) == u_size
-    tbu = rbu.sample(batch_size=batch_size)
-
-    assert tbu.x_coords.shape == (1,batch_size)
-    assert tbu.y_coords.shape == (1,batch_size)
-    assert tbu.directions.shape == (1,batch_size)
-    assert tbu.actions.shape == (0,)
-    assert tbu.rewards.shape == (0,)
-    assert tbu.xs.shape[:2] == (1,batch_size)
-
-    for t in rbu:
-        assert t.x_coords.shape == (1,batch_size)
-        assert t.y_coords.shape == (1,batch_size)
-        assert t.directions.shape == (1,batch_size)
-        assert t.actions.shape == (0,)
-        assert t.rewards.shape == (0,)
-        assert t.xs.shape[:2] == (1,batch_size)
-
-    zl = rbu.get_zipped_list()
-    assert len(zl) == u_size
-    assert len(zl[0]) == 3
-    assert len(zl[-1]) == 3
-
-
-
