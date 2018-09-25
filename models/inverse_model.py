@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.functional as F
 from models.base_encoder import Encoder
+from utils import classification_acc
 
 class ActionPredictor(nn.Module):
     def __init__(self, num_actions, in_ch, h_ch=256):
@@ -27,5 +28,12 @@ class InverseModel(nn.Module):
         fboth = torch.cat([f0,f1],dim=-1)
         return self.ap(fboth)
     
-    def loss(self,pred, true):
-        return nn.CrossEntropyLoss()(pred,true)
+    def loss_acc(self, trans):
+        # for now just select the first two frames (but maybe in the future we could select every possible frame
+        # or some combination of them)
+        
+        pred = self.forward(trans.xs[0],trans.xs[1])
+        true = trans.actions[0]
+        acc = classification_acc(logits=pred,true=true)
+        loss = nn.CrossEntropyLoss()(pred,true)
+        return loss, acc

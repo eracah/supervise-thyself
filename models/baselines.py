@@ -131,17 +131,20 @@ class VAE(nn.Module):
         return x_hat, mu, logvar
     
 
-    def get_kl_rec(self,x,xr,mu,logvar):
+    def get_kl_rec(self,trans):
+        x = trans.xs[0]
+        x_hat,mu,logvar = self.forward(x)
         num_pixels = int(np.prod(x.size()[1:]))
         kldiv = -0.5 * torch.sum(1 + logvar - mu**2 - torch.exp(logvar),dim=1) / num_pixels
-        rec = torch.sum((xr - x)**2,dim=(1,2,3)) / num_pixels
+        rec = torch.sum((x_hat - x)**2,dim=(1,2,3)) / num_pixels
         
         return kldiv, rec
     
-    def loss(self,x,xr,mu,logvar):
-        kldiv, rec = self.get_kl_rec(x,xr,mu,logvar)
+    def loss_acc(self,trans):
+        acc = 0.0
+        kldiv, rec = self.get_kl_rec(trans)
         loss = rec + kldiv
-        return loss.mean()
+        return loss.mean(),acc
 
 class BetaVAE(VAE):
     def __init__(self,beta=1.,in_ch=3,
@@ -154,7 +157,8 @@ class BetaVAE(VAE):
         self.beta = beta
         
 
-    def loss(self,x,xr,mu,logvar):
-        kldiv, rec = self.get_kl_rec(x,xr,mu,logvar)
+    def loss_acc(self,trans):
+        kldiv, rec = self.get_kl_rec(trans)
         loss = rec + self.beta * kldiv
-        return loss.mean()
+        acc = 0.0
+        return loss.mean(), acc
