@@ -59,7 +59,7 @@ class LinearClassifier(nn.Module):
 
 
 class QuantEval(object): #it's a god class
-    def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args, model_dir):
+    def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args):
         self.encoder = encoder
         self.encoder_name = encoder_name
         # train classifier on val1_buf, hyperparameter tune on val2 buf, test on test buf
@@ -71,7 +71,6 @@ class QuantEval(object): #it's a god class
         self.args = args
         self.alpha = args.gen_loss_alpha
         self.max_epochs = args.max_quant_eval_epochs
-        self.model_dir = model_dir
         self.clsf_template = partial(LinearClassifier,
                             num_classes=self.num_classes,
                             embed_len=self.encoder.embed_len)
@@ -262,7 +261,7 @@ class QuantEvals(object):
         lrs, l1_coeffs = self.get_hyperparam_settings()
         eval_dict = {k:{} for k in self.predicted_value_names}
         for encoder_name,encoder in encoder_dict.items():
-            experiment, model_dir = setup_exp(self.args, self.exp_dir,exp_name=encoder_name)
+            experiment = setup_exp(self.args, self.exp_dir,exp_name=encoder_name)
             experiment.log_parameter("encoder", encoder_name)
             for predicted_value_name in  self.predicted_value_names:
             #self.print_latex_table_header(predicted_value_name)
@@ -273,7 +272,7 @@ class QuantEvals(object):
                                 self.val2_buf, 
                                 num_classes=self.class_dict[predicted_value_name],
                                 predicted_value_name=predicted_value_name,
-                                args=self.args, model_dir=model_dir)
+                                args=self.args)
                 
                 metric_dict, best_lr, best_l1_coeff, best_state_dict = qev.hyperparameter_tune(lrs, l1_coeffs)
                 for i in range(len(metric_dict["tr_accs"])):
