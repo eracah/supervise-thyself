@@ -46,9 +46,12 @@ def setup_exp(args,exp_dir, exp_name):
                             project_name=str(exp_dir.parent) + "_" + exp_dir.name,
                             workspace="eracah")
     experiment.set_name(exp_name)
+    return experiment
+    
+def setup_model_dir(exp_dir):
     model_dir = Path(".models") / exp_dir
     model_dir.mkdir(exist_ok=True,parents=True)
-    return experiment, model_dir
+    return model_dir
 
 
 # In[4]:
