@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -16,7 +16,6 @@ import argparse
 import sys
 import copy
 from copy import deepcopy
-from tensorboardX import SummaryWriter
 from torchvision.utils import make_grid
 import numpy as np
 import time
@@ -27,18 +26,18 @@ from data.tr_val_test_splitter import setup_tr_val_val_test
 from models.base_encoder import Encoder
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
 from models.inverse_model import InverseModel
-from utils import mkstr,write_to_config_file,convert_frame, classification_acc,setup_env, setup_dirs_logs,parse_minigrid_env_name
+from utils import mkstr,write_to_config_file,convert_frame,classification_acc,setup_env, setup_exp,parse_minigrid_env_name
 from evaluations.quant_evaluation import QuantEvals
 import os
-
+from comet_ml import Experiment
 
 # In[2]:
 
 
-def setup_exp_name(args):
+def setup_exp_dir(args):
     mstr = partial(mkstr,args=args)
     prefix = ("nb_" if args.test_notebook else "")
-    exp_name = Path(prefix  + "_".join(["%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
+    exp_name = Path(prefix  + str(args.resize_to[0]) + "_" + args.env_name)
     base_dir = Path("eval")
     return base_dir / exp_name
 
@@ -110,7 +109,7 @@ def setup_args():
     sys.argv = tmp_argv
     if test_notebook:
         args.batch_size = 5
-        args.max_quant_eval_epochs = 2
+        args.max_quant_eval_epochs = 200
         args.test_notebook=True
     else:
         args.test_notebook = False
@@ -144,31 +143,35 @@ def setup_models(action_space, args):
 # In[3]:
 
 
+# In[2]:
+
+
 if __name__ == "__main__":
            
     args = setup_args()
 
-    exp_dir = setup_exp_name(args)
-    writer, models_dir = setup_dirs_logs(args, exp_dir)
+    exp_dir = setup_exp_dir(args)
     
-
-
 
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name, args.seed)
     args.grid_size = grid_size
+    args.num_directions = num_directions
+    args.tot_examples = tot_examples
 
     enc_dict = setup_models(action_space, args)
-    
-    
-
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     tr_buf, val_buf, eval_tr_buf, eval_val_buf, test_buf = setup_tr_val_val_test(env, random_policy,
                                                                                  convert_fxn, tot_examples, args.batch_size)
 
-    qevs = QuantEvals(eval_tr_buf, eval_val_buf, test_buf, writer,
-               grid_size,num_directions, args)
+    qevs = QuantEvals(eval_tr_buf, eval_val_buf, test_buf, args, exp_dir)
 
     eval_dict = qevs.run_evals(enc_dict)
 
         
+
+
+# In[ ]:
+
+
+
 

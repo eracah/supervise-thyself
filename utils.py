@@ -37,20 +37,18 @@ from pathlib import Path
 from collections import namedtuple
 from itertools import product
 import random
-from tensorboardX import SummaryWriter
+
+from comet_ml import Experiment
 
 
-# In[3]:
-
-
-def setup_dirs_logs(args, exp_name):
-    base = Path("./.results")
-    exp_dir = base / exp_name
-    writer = SummaryWriter(log_dir=str(exp_dir))
-    write_to_config_file(args.__dict__, exp_dir)
-    model_dir = Path(".models") / exp_name
+def setup_exp(args,exp_dir, exp_name):
+    experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
+                            project_name=str(exp_dir.parent) + "_" + exp_dir.name,
+                            workspace="eracah")
+    experiment.set_name(exp_name)
+    model_dir = Path(".models") / exp_dir
     model_dir.mkdir(exist_ok=True,parents=True)
-    return writer, model_dir
+    return experiment, model_dir
 
 
 # In[4]:
@@ -143,13 +141,6 @@ def initialize_weights(self):
             m.bias.data.zero_()
 
 
-# In[20]:
-
-
-def write_ims(index,rows,ims,name, iter_):
-    num_ims = rows**2
-    ims_grid = make_grid((ims.data[index] + 1) / 2, rows)
-    writer.add_image(name, ims_grid, iter_)
     
 
 

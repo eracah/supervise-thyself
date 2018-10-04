@@ -7,8 +7,8 @@ import copy
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
-from utils import  mkstr, write_to_config_file,convert_frame, classification_acc
-
+from utils import  mkstr, write_to_config_file,convert_frame, classification_acc, setup_exp
+from collections import OrderedDict
 from functools import partial
 
 
@@ -59,7 +59,7 @@ class LinearClassifier(nn.Module):
 
 
 class QuantEval(object): #it's a god class
-    def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args, writer):
+    def __init__(self, encoder, encoder_name, val1_buf,val2_buf,test_buf, num_classes, predicted_value_name, args, model_dir):
         self.encoder = encoder
         self.encoder_name = encoder_name
         # train classifier on val1_buf, hyperparameter tune on val2 buf, test on test buf
@@ -71,9 +71,7 @@ class QuantEval(object): #it's a god class
         self.args = args
         self.alpha = args.gen_loss_alpha
         self.max_epochs = args.max_quant_eval_epochs
-        self.writer=writer
-    
-    
+        self.model_dir = model_dir
         self.clsf_template = partial(LinearClassifier,
                             num_classes=self.num_classes,
                             embed_len=self.encoder.embed_len)
@@ -84,7 +82,8 @@ class QuantEval(object): #it's a god class
         self.clsf = None
         
         self.iter = eval_iter
-        
+    
+    
     def one_iter(self, batch, f, update_weights=True):
         name = self.predicted_value_name
         if update_weights:
@@ -118,16 +117,22 @@ class QuantEval(object): #it's a god class
         val_loss, tr_loss, min_val_loss = np.inf, np.inf, np.inf
         gen_loss = 0.0
         epoch = 0
+        metric_dict = OrderedDict(tr_losses=[], tr_accs=[], val_losses=[], val_accs=[])
+        
         
         while gen_loss <= self.alpha and epoch < self.max_epochs: # this is the GL_alpha early stopping criterion from Prechelt, 1997
             #print(epoch, gen_loss)
             prev_state_dict = copy.deepcopy(state_dict)
             self.clsf.train()
             tr_loss, tr_acc, state_dict = self.one_epoch(self.val1_buf, mode="train")
+            metric_dict["tr_losses"].append(tr_loss)
+            metric_dict["tr_accs"].append(tr_acc)
             
       
             self.clsf.eval()
             val_loss, val_acc, _ = self.one_epoch(self.val2_buf, mode="val")
+            metric_dict["val_losses"].append(val_loss)
+            metric_dict["val_accs"].append(val_acc)
             if val_loss < min_val_loss:
                 min_val_loss = copy.deepcopy(val_loss)
 
@@ -135,70 +140,55 @@ class QuantEval(object): #it's a god class
             val_min_ratio = ((val_loss+ np.finfo(float).eps) /(min_val_loss + np.finfo(float).eps)) #prevent divide by 0 error
             gen_loss = 100. * (val_min_ratio - 1 )
             
-            self.write_acc_loss(tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch)
+            #self.write_acc_loss(tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch)
             if gen_loss == 0. and min_val_loss == 0.:
                 break
             epoch+=1
-
-        return tr_loss, tr_acc, val_loss, val_acc, prev_state_dict
+        #metric_dict["state_dict"] = prev_state_dict
+#         metric_dict["lr"] = lr
+#         metric_dict["l1_coeff"] = lasso_coeff
+        return metric_dict, prev_state_dict
     
-    def write_acc_loss(self,tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch):
-        base_string_enc = "%s/%s"%(self.encoder_name,self.predicted_value_name)
-        tr_val_base_string = base_string_enc + "/lr=%0.4f,l1=%0.1f"%(lr, lasso_coeff)
-        loss_dict = dict(train=tr_loss, val=val_loss)
-        acc_dict = dict(train=tr_acc, val=val_acc)
-        self.writer.add_scalars(tr_val_base_string + "/loss",loss_dict,epoch)
-        self.writer.add_scalars(tr_val_base_string + "/acc",acc_dict,epoch)
+#     def write_acc_loss(self,tr_loss, tr_acc, val_loss, val_acc, lr, lasso_coeff, epoch):
         
-        base_string_pred_value = "%s"%(self.predicted_value_name)
-        self.writer.add_scalars(base_string_pred_value + "/loss/tr",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):tr_loss}, epoch)
-        self.writer.add_scalars(base_string_pred_value + "/loss/val",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):val_loss}, epoch)
-        self.writer.add_scalars(base_string_pred_value + "/acc/tr",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):tr_acc}, epoch)
-        self.writer.add_scalars(base_string_pred_value + "/acc/val",{"%s_lr=%8.4f,l1=%8.4f"%(self.encoder_name,lr, lasso_coeff):val_acc}, epoch)
+#         dic = dict(tr_loss=tr_loss, tr_acc=tr_acc, val_loss=val_loss, val_acc=val_acc)
+#         self.experiment.log_multiple_metrics(dic=dic,prefix="%s_lr=%0.4f,l1=%0.1f"%(self.encoder_name,lr, lasso_coeff),step=epoch)
         
-    def search1d(self,name,hyp_to_vary, train_fxn):
-        best_val_loss = np.inf
-        best_hyp = None
-        best_state_dict = None
-        for hyp in hyp_to_vary:
-            #print(name, " = ", hyp_to_vary)
-            tr_loss, tr_acc, val_loss, val_acc, state_dict = train_fxn(hyp_to_vary)
-            #print(val_loss)
-            if val_loss < best_val_loss:
-                best_val_loss = copy.deepcopy(val_loss)
-                best_lr = copy.deepcopy(lr)
-                best_state_dict = copy.deepcopy(state_dict)
+#     def search1d(self,name,hyp_to_vary, train_fxn):
+#         best_val_loss = np.inf
+#         best_hyp = None
+#         best_state_dict = None
+#         for hyp in hyp_to_vary:
+#             #print(name, " = ", hyp_to_vary)
+#             metric_dict, state_dict = train_fxn(hyp_to_vary)
+#             #print(val_loss)
+#             if val_loss < best_val_loss:
+#                 best_val_loss = copy.deepcopy(val_loss)
+#                 best_lr = copy.deepcopy(lr)
+#                 best_state_dict = copy.deepcopy(state_dict)
         
     
-    def hyperparameter_tune(self, lrs,lasso_coeffs):
+    def hyperparameter_tune(self, lrs,l1_coeffs):
         
         best_val_loss = np.inf
-        best_hyp = None
-        best_state_dict = None
         for lr in lrs:
-            tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr,lasso_coeff=0.0)
-            if val_loss < best_val_loss:
-                best_val_loss = copy.deepcopy(val_loss)
-                best_lr = copy.deepcopy(lr)
-                #best_state_dict = copy.deepcopy(state_dict)
+            metric_dict, _ = self.train(lr,lasso_coeff=0.0)
+            min_val_loss = min(metric_dict["val_losses"])
+            if min_val_loss < best_val_loss:
+                best_val_loss, best_lr =  copy.deepcopy(min_val_loss), copy.deepcopy(lr)
         
 
         
         best_val_loss = np.inf
-        best_hyp = None
-        best_state_dict = None
-        for lasso_coeff in lasso_coeffs:
-            tr_loss, tr_acc, val_loss, val_acc, state_dict = self.train(lr=best_lr,lasso_coeff=lasso_coeff)
-            #print(val_loss)
-            if val_loss < best_val_loss:
-                best_val_loss = copy.deepcopy(val_loss)
-                best_l1_coeff = copy.deepcopy(lasso_coeff)
-                best_state_dict = copy.deepcopy(state_dict)
-                
-        #print("best lr = ",best_lr, " best l1_coeff = ", best_l1_coeff)
-        
-                
-        return best_state_dict, best_lr, best_l1_coeff
+        for l1_coeff in l1_coeffs:
+            metric_dict, state_dict = self.train(lr=best_lr,lasso_coeff=l1_coeff)
+            min_val_loss = min(metric_dict["val_losses"])
+            if min_val_loss < best_val_loss:
+                best_l1_coeff = copy.deepcopy(l1_coeff)
+                best_metric_dict = copy.deepcopy(metric_dict)
+                   
+
+        return best_metric_dict, best_lr, best_l1_coeff, state_dict
     
     def test(self,state_dict):
         self.clsf = self.clsf_template(lasso_coeff=0.).to(self.args.device)
@@ -252,20 +242,16 @@ class QuantEval(object): #it's a god class
     
         
  
-
-
-# In[5]:
-
-
 class QuantEvals(object):
-    def __init__(self, val1_buf, val2_buf, test_buf, writer, grid_size,num_directions, args):
+    def __init__(self, val1_buf, val2_buf, test_buf, args, exp_dir ):
         self.val1_buf = val1_buf
         self.val2_buf = val2_buf
         self.test_buf = test_buf
         self.args = args
-        self.writer = writer
+        grid_size,num_directions = self.args.grid_size, self.args.num_directions
         self.predicted_value_names = ["x_coords","y_coords","directions"]
         self.class_dict = dict(zip(self.predicted_value_names, [grid_size,grid_size,num_directions]))
+        self.exp_dir = exp_dir
     
     def get_hyperparam_settings(self):
         lrs = [10**i for i in range(-5,0,1)]
@@ -275,26 +261,36 @@ class QuantEvals(object):
     def run_evals(self, encoder_dict):
         lrs, l1_coeffs = self.get_hyperparam_settings()
         eval_dict = {k:{} for k in self.predicted_value_names}
-        for predicted_value_name in  self.predicted_value_names:
-            self.print_latex_table_header(predicted_value_name)
-            for encoder_name,encoder in encoder_dict.items():                
+        for encoder_name,encoder in encoder_dict.items():
+            experiment, model_dir = setup_exp(self.args, self.exp_dir,exp_name=encoder_name)
+            experiment.log_parameter("encoder", encoder_name)
+            for predicted_value_name in  self.predicted_value_names:
+            #self.print_latex_table_header(predicted_value_name)
                 qev = QuantEval(encoder, 
                                 encoder_name, 
                                 self.val1_buf,
                                 self.val2_buf,
-                                self.test_buf, 
+                                self.val2_buf, 
                                 num_classes=self.class_dict[predicted_value_name],
                                 predicted_value_name=predicted_value_name,
-                                args=self.args, writer=self.writer)
-
-                best_state_dict, best_lr, best_l1_coeff = qev.hyperparameter_tune(lrs, l1_coeffs)
+                                args=self.args, model_dir=model_dir)
+                
+                metric_dict, best_lr, best_l1_coeff, best_state_dict = qev.hyperparameter_tune(lrs, l1_coeffs)
+                for i in range(len(metric_dict["tr_accs"])):
+                    epoch_i_metric_dict = {k: v[i] for k,v in metric_dict.items() }
+                    experiment.log_multiple_metrics(epoch_i_metric_dict, prefix=predicted_value_name, step=i)
+                experiment.log_multiple_params(dict(lr=best_lr,l1_coeff=best_l1_coeff))
+                
+                
                 disent, compl, inform = qev.test(best_state_dict)
-                eval_dict[qev.predicted_value_name][qev.encoder_name] = inform
-                self.print_latex_table_row(qev.encoder_name,best_lr, best_l1_coeff, disent, compl, inform)
-            self.print_latex_table_footer()
-        for predicted_value_name in self.predicted_value_names:
-            self.writer.add_scalars("test/%s"%(predicted_value_name),eval_dict[predicted_value_name])
-        return eval_dict
+                experiment.log_multiple_metrics(dict(disent=disent, compl=compl,   
+                                                     inform=inform),prefix=predicted_value_name)
+                #eval_dict[qev.predicted_value_name][qev.encoder_name] = inform
+                
+                
+                #self.print_latex_table_row(qev.encoder_name,best_lr, best_l1_coeff, disent, compl, inform)
+            #self.print_latex_table_footer()
+        #return eval_dict
     
     
     
