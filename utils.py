@@ -41,15 +41,28 @@ import random
 from comet_ml import Experiment
 
 
-def setup_exp(args,exp_dir, exp_name):
+def get_upper(st):
+    ret = "".join([s for s in st if s.isupper()])
+    return ret
+
+def get_exp_nickname(args):
+    return str(args.resize_to[0]) + args.env_nickname + parse_minigrid_env_name(args.env_name)
+
+def setup_exp_dir(args, base_name="eval"):
+    exp_nn = get_exp_nickname(args)
+    exp_name = Path(exp_nn)
+    base_dir = Path(base_name)
+    return base_dir / exp_name
+
+def setup_exp(args,project_name, exp_name):
     experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
-                            project_name=str(exp_dir.parent) + "_" + exp_dir.name,
+                            project_name=project_name,
                             workspace="eracah")
     experiment.set_name(exp_name)
     return experiment
     
-def setup_model_dir(exp_dir):
-    model_dir = Path(".models") / exp_dir
+def setup_model_dir(child_dir):
+    model_dir = Path(".models") / child_dir
     model_dir.mkdir(exist_ok=True,parents=True)
     return model_dir
 

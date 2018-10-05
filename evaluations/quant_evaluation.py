@@ -261,7 +261,9 @@ class QuantEvals(object):
         lrs, l1_coeffs = self.get_hyperparam_settings()
         eval_dict = {k:{} for k in self.predicted_value_names}
         for encoder_name,encoder in encoder_dict.items():
-            experiment = setup_exp(self.args, self.exp_dir,exp_name=encoder_name)
+            experiment = setup_exp(self.args, 
+                                   project_name=str(self.exp_dir.parent) + "_" + self.exp_dir.name,
+                                   exp_name=("nb_" if self.args.test_notebook else "") + encoder_name)
             experiment.log_parameter("encoder", encoder_name)
             for predicted_value_name in  self.predicted_value_names:
             #self.print_latex_table_header(predicted_value_name)

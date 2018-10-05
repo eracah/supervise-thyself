@@ -1,7 +1,7 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
-# In[7]:
+# In[1]:
 
 
 import random
@@ -10,12 +10,12 @@ import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 from models.base_encoder import Encoder
-from utils import setup_env
+from utils import setup_env, setup_exp_dir
 from data.replay_buffer import BufferFiller
 import argparse
 from models.inverse_model import InverseModel
 from models.baselines import VAE, BetaVAE
-from utils import convert_frame, classification_acc, mkstr, setup_dirs_logs, parse_minigrid_env_name
+from utils import convert_frame, classification_acc, mkstr, parse_minigrid_env_name, setup_model_dir, get_upper, setup_exp
 import argparse
 import sys
 import copy
@@ -48,14 +48,18 @@ def setup_args(test_notebook):
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--model",type=str,default="inv_model")
-    parser.add_argument("--beta",type=float,default=1.0)
+    parser.add_argument("--model",type=str,default="beta_vae")
+    parser.add_argument("--beta",type=float,default=2.0)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
-
+    args.env_nickname = get_upper(args.env_name)
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     mstr = partial(mkstr,args=args)
+    if test_notebook:
+        args.test_notebook=True
+    else:
+        args.test_notebook = False
 #     output_dirname = ("nb_" if test_notebook else "") + "_".join(["%s_e%s"%(args.model,parse_minigrid_env_name(args.env_name)),
 #                                                                         "r%i"%(args.resize_to[0])
 #                                                                        ])
@@ -67,14 +71,14 @@ def setup_args(test_notebook):
 
 
 class Trainer(object):
-    def __init__(self, model, tr_buf, val_buf, model_dir, args, writer):
+    def __init__(self, model, tr_buf, val_buf, model_dir, args, experiment):
         self.model = model
         self.val_buf = val_buf
         self.tr_buf =tr_buf
         self.args = args
         self.model_dir = model_dir
         self.model_name = self.args.model
-        self.writer=writer
+        self.experiment = experiment
         
         #self.opt_template = partial(Adam,params=self.model.parameters())
         
@@ -102,8 +106,7 @@ class Trainer(object):
         
         avg_loss = np.mean(losses)
         avg_acc = np.mean(accs)
-        writer.add_scalar("%s/%s_loss"%(self.model_name, mode), avg_loss, global_step=self.epoch)
-        writer.add_scalar("%s/%s_acc"%(self.model_name,mode), avg_acc, global_step=self.epoch)
+        experiment.log_multiple_metrics(dict(loss=avg_loss,acc=avg_acc), prefix=mode, step=self.epoch)
         if mode == "train":
             print("Epoch %i: "%self.epoch)
         print("\t%s"%mode)
@@ -141,17 +144,33 @@ def setup_model(args, action_space):
     model = model_table[args.model](**encoder_kwargs ).to(args.device)
     return model    
 
-def setup_exp_name(test_notebook, args):
-    prefix = ("nb_" if test_notebook else "")
-    exp_name = Path(prefix  + "_".join([ ("lr%f"%args.lr).rstrip('0').rstrip('.'),"%s"%parse_minigrid_env_name(args.env_name), "r%i"%(args.resize_to[0])]))
+def get_project_name(args, exp_dir):
+    return "_".join([str(exp_dir.parent), args.model])
+    
+def get_hyp_str(args):
+    hyp_str = ("lr%f"%args.lr).rstrip('0').rstrip('.')
     if args.model == "beta_vae":
-        exp_name = Path(str(exp_name) + ("_%f"%args.beta).rstrip('0').rstrip('.'))
-    base_dir = Path(args.model)
-    return base_dir / exp_name
+        hyp_str += ("beta=%f"%args.beta).rstrip('0').rstrip('.')
+    return hyp_str   
+
+def get_exp_name(args, exp_dir):
+    exp_name = ("nb_" if args.test_notebook else "") + exp_dir.name
+    exp_name += "_" + get_hyp_str(args)
+    return exp_name
     
 
 
-# In[16]:
+# In[2]:
+
+
+def get_experiment(args,exp_dir):
+    project_name = get_project_name(args, exp_dir)
+    exp_name = get_exp_name(args, exp_dir)
+    experiment = setup_exp(args,project_name, exp_name)
+    return experiment
+
+
+# In[3]:
 
 
 if __name__ == "__main__":
@@ -159,9 +178,11 @@ if __name__ == "__main__":
     args = setup_args(test_notebook)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
 
+    exp_dir = setup_exp_dir(args=args,base_name="train")
+    model_dir = setup_model_dir(exp_dir.parent / Path(exp_dir.name) / Path(args.model) / Path(("nb_" if args.test_notebook else "") + get_hyp_str(args)) )
+    experiment = get_experiment(args,exp_dir)
+    experiment.log_multiple_params(args.__dict__)
 
-    exp_name = setup_exp_name(test_notebook,args)
-    writer, model_dir = setup_dirs_logs(args,exp_name)
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name,args.seed)
     model = setup_model(args, action_space)
     
@@ -174,6 +195,18 @@ if __name__ == "__main__":
     print("done loading buffers")
     
 
-    trainer = Trainer(model, tr_buf, val_buf, model_dir, args, writer)
+    trainer = Trainer(model, tr_buf, val_buf, model_dir, args, experiment)
     trainer.train()
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
 
