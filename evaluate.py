@@ -75,12 +75,13 @@ def setup_args():
 
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--lasso_coeff", type=float, default=0.1)
-    parser.add_argument("--max_quant_eval_epochs", type=int, default=50)
+    parser.add_argument("--max_quant_eval_epochs", type=int, default=1000)
     parser.add_argument("--gen_loss_alpha", type=float, default=0.4)
     parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-8x8-v0'),
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--val_batch_size",type=int,default=32)
     parser.add_argument("--num_episodes",type=int,default=100)
+    parser.add_argument("--real_test",action="store_true")
     parser.add_argument("--resize_to",type=int, nargs=2, default=[96, 96])
     parser.add_argument("--epochs",type=int,default=100000)
     parser.add_argument("--hidden_width",type=int,default=32)
@@ -157,8 +158,10 @@ if __name__ == "__main__":
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
     tr_buf, val_buf, eval_tr_buf, eval_val_buf, test_buf = setup_tr_val_val_test(env, random_policy,
                                                                                  convert_fxn, tot_examples, args.batch_size)
-
-    qevs = QuantEvals(eval_tr_buf, eval_val_buf, test_buf, args, exp_dir)
+    if args.real_test:
+        qevs = QuantEvals(eval_tr_buf, eval_val_buf, test_buf, args, exp_dir)
+    else:
+        qevs = QuantEvals(eval_tr_buf, eval_val_buf, eval_val_buf, args, exp_dir)
 
     eval_dict = qevs.run_evals(enc_dict)
 

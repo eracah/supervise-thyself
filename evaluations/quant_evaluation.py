@@ -119,7 +119,7 @@ class QuantEval(object): #it's a god class
         metric_dict = OrderedDict(tr_losses=[], tr_accs=[], val_losses=[], val_accs=[])
         
         
-        while gen_loss <= self.alpha and epoch < self.max_epochs: # this is the GL_alpha early stopping criterion from Prechelt, 1997
+        while epoch < self.max_epochs: #gen_loss <= self.alpha and : # this is the GL_alpha early stopping criterion from Prechelt, 1997
             #print(epoch, gen_loss)
             prev_state_dict = copy.deepcopy(state_dict)
             self.clsf.train()
@@ -271,7 +271,7 @@ class QuantEvals(object):
                                 encoder_name, 
                                 self.val1_buf,
                                 self.val2_buf,
-                                self.val2_buf, 
+                                self.test_buf, 
                                 num_classes=self.class_dict[predicted_value_name],
                                 predicted_value_name=predicted_value_name,
                                 args=self.args)

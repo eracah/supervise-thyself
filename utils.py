@@ -46,7 +46,7 @@ def get_upper(st):
     return ret
 
 def get_exp_nickname(args):
-    return str(args.resize_to[0]) + args.env_nickname + parse_minigrid_env_name(args.env_name)
+    return str(args.resize_to[0]) + args.env_nickname + (parse_minigrid_env_name(args.env_name) if "MiniGrid" in args.env_name else "")
 
 def setup_exp_dir(args, base_name="eval"):
     exp_nn = get_exp_nickname(args)
@@ -77,7 +77,7 @@ def parse_minigrid_env_name(name):
 # In[5]:
 
 
-def setup_env(env_name, seed):
+def setup_env(env_name, seed=4):
     env = gym.make(env_name)
     env.seed(seed)
     if "MiniGrid" in env_name:
@@ -85,13 +85,30 @@ def setup_env(env_name, seed):
         grid_size = env.grid_size - 2
         num_directions = 4
         tot_examples = grid_size**2 * num_directions
+        def get_latent_dict(self):
+            x_coord, y_coord,  = int(self.agent_pos[0]), int(self.agent_pos[1])
+            direction = self.agent_dir
+            latent_dict = dict(x_coord=x_coord, y_coord=y_coord, direction=direction)
+            return latent_dict
+        
+
     else:
         action_space = list(range(env.action_space.n))
         grid_size = None
         num_directions = None
-        tot_exampls = None
+        tot_examples = None
+        def get_latent_dict(env):
+            player = env.env.game_state.game.newGame.Players[0]
+            (x_coord,y_coord), is_jumping, on_ladder = player.getPosition(), player.isJumping, player.onLadder
+            latent_dict = dict(x_coord=x_coord,y_coord=y_coord, is_jumping=is_jumping, on_ladder=on_ladder)
+            return latent_dict
+        
+        # def reset_wrapper(env):
+        #     init_x,init_y =                 env.env.game_state.game.newGame.Players[0].getPosition()
+        # upd = np.random.choice([0,70,150])
+        # env.env.game_state.game.newGame.Players[0].updateY(-1*upd)
     num_actions = len(action_space)
-    
+    env.get_latent_dict = get_latent_dict
     rng = np.random.RandomState(seed)
     random_policy = lambda x0: rng.randint(num_actions)
     return env, action_space, grid_size, num_directions, tot_examples, random_policy
@@ -110,7 +127,7 @@ def classification_acc(logits,true):
 
 
 
-def convert_frame(obs, resize_to=(84,84),to_tensor=False):
+def convert_frame(obs, resize_to=(-1,-1),to_tensor=False):
     pil_image = Image.fromarray(obs, 'RGB')
     
     transforms = [Resize(resize_to)] if resize_to != (-1,-1) else []

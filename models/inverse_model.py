@@ -23,8 +23,8 @@ class InverseModel(nn.Module):
         self.ap = ActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
     
     def forward(self,xs):
-        f0 = self.encoder(xs[0])
-        f1 = self.encoder(xs[1])
+        f0 = self.encoder(xs[:,0])
+        f1 = self.encoder(xs[:,1])
         fboth = torch.cat([f0,f1],dim=-1)
         return self.ap(fboth)
     
@@ -33,7 +33,9 @@ class InverseModel(nn.Module):
         # or some combination of them)
         
         pred = self.forward(trans.xs)
-        true = trans.actions[0]
+        true = trans.actions[:,0]
+        # print(pred.size())
+        # print(true.size())
         acc = classification_acc(logits=pred,true=true)
         loss = nn.CrossEntropyLoss()(pred,true)
         return loss, acc

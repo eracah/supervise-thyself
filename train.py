@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
-# In[1]:
+# In[3]:
 
 
 import random
@@ -26,7 +26,7 @@ from torch.optim import Adam, RMSprop
 import numpy as np
 from pathlib import Path
 import time
-from data.tr_val_test_splitter import setup_tr_val_val_test
+from data.tr_val_test_splitter import setup_tr_val_test
 import os
 
 
@@ -41,18 +41,20 @@ def setup_args(test_notebook):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default='MiniGrid-Empty-8x8-v0'),
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[96, 96])
+    parser.add_argument("--env_name",type=str, default='originalGame-v0'),
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[224, 224])
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=100000)
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--model",type=str,default="beta_vae")
+    parser.add_argument("--model",type=str,default="inv_model")
     parser.add_argument("--beta",type=float,default=2.0)
+    parser.add_argument("--tr_size",type=int,default=1000)
+    parser.add_argument("--val_size",type=int,default=500)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
-    args.env_nickname = get_upper(args.env_name)
+    args.env_nickname = get_upper(args.env_name) if "MiniGrid" in args.env_name else args.env_name.split("-")[0]
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     mstr = partial(mkstr,args=args)
@@ -165,6 +167,7 @@ def get_exp_name(args, exp_dir):
 
 def get_experiment(args,exp_dir):
     project_name = get_project_name(args, exp_dir)
+    print(project_name)
     exp_name = get_exp_name(args, exp_dir)
     experiment = setup_exp(args,project_name, exp_name)
     return experiment
@@ -173,24 +176,34 @@ def get_experiment(args,exp_dir):
 # In[3]:
 
 
+# In[4]:
+
+
 if __name__ == "__main__":
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
     args = setup_args(test_notebook)
     convert_fxn = partial(convert_frame, resize_to=args.resize_to)
 
+    
     exp_dir = setup_exp_dir(args=args,base_name="train")
     model_dir = setup_model_dir(exp_dir.parent / Path(exp_dir.name) / Path(args.model) / Path(("nb_" if args.test_notebook else "") + get_hyp_str(args)) )
     experiment = get_experiment(args,exp_dir)
     experiment.log_multiple_params(args.__dict__)
-
+    
     env, action_space, grid_size, num_directions, tot_examples, random_policy = setup_env(args.env_name,args.seed)
+    
+    print("starting to load buffers")
+    tr_buf, val_buf = setup_tr_val_test(env=env,sizes=[args.tr_size,args.val_size], policy=random_policy, 
+                                 convert_fxn=convert_fxn,batch_size=args.batch_size,just_train=True, frames_per_trans=3)
+    if args.resize_to[0] == -1:
+        args.resize_to = tr_buf.memory[0].xs[0].shape[:2]
+    print(args.resize_to)
+    
+
     model = setup_model(args, action_space)
     
-    
 
-    print("starting to load buffers")
-    tr_buf, val_buf = setup_tr_val_val_test(env, random_policy, 
-                                 convert_fxn, tot_examples,args.batch_size,just_train=True, frames_per_trans=3)
+
 
     print("done loading buffers")
     
@@ -199,14 +212,8 @@ if __name__ == "__main__":
     trainer.train()
 
 
-# In[ ]:
+# In[8]:
 
 
-
-
-
-# In[ ]:
-
-
-
+t=tr_buf.sample(1)
 

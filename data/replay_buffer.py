@@ -10,8 +10,9 @@ from gym_minigrid.minigrid import Grid
 from functools import partial
 from data.collectors import get_trans_tuple, DataCollector
 from functools import partial
-from data.iterators import PolicyIterator, ListIterator, UnusedPointsIterator
+from data.iterators import PolicyIterator  #, ListIterator, UnusedPointsIterator
 import copy
+from utils import setup_env
 
 class ReplayMemory(object):
     """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample
@@ -45,20 +46,38 @@ class ReplayMemory(object):
         batch_size = self.batch_size if batch_size is None else batch_size
         trans = random.sample(self.memory, batch_size)        
         return self._convert_raw_sample(trans)
-        
     
+    
+            
     def _convert_raw_sample(self,transitions):
         """converts 8-bit RGB to float and pytorch tensor"""
         # puts all trans objects into one trans object
-        #trans_batch = self.Transition(*zip(*transitions))
-        list_of_fields = [list(zip(*field)) for field in zip(*transitions)]
-        trans = self.Transition(*list_of_fields)
-        tb_dict = trans._asdict()
-        #return tb_dict,trans
+        trans = self._combine_transitions_into_one_big_one(transitions)
+        batch = self._convert_fields_to_pytorch_tensors(trans)
+        return batch
+        
+    def _combine_transitions_into_one_big_one(self,transitions):
+        fields = []
+        for i,field in enumerate(zip(*transitions)):
+            if isinstance(field[0],list):
+                new_field = np.stack([list_ for list_ in field])
+                if str(new_field.dtype) == "bool":
+                    new_field = new_field.astype("int")
+                #print(field.shape,field)
+            if isinstance(field[0],dict):
+                new_field = {}
+                for k in field[0].keys():
+                    all_items_of_key_k = [dic[k] for dic in field]
+                    array_of_items_of_key_k = np.stack([list_ for list_ in all_items_of_key_k])
+                    new_field[k] = array_of_items_of_key_k
 
-        tb_dict["x_coords"] = torch.tensor(trans.x_coords).long().to(self.DEVICE)
-        tb_dict["y_coords"] = torch.tensor(trans.y_coords).long().to(self.DEVICE)
-        tb_dict["directions"] = torch.tensor(trans.directions).long().to(self.DEVICE)
+            fields.append(new_field)
+        return self.Transition(*fields)
+    
+    def _convert_fields_to_pytorch_tensors(self,trans):
+        tb_dict = trans._asdict()
+        for k,v  in trans.state_param_dict.items():
+            tb_dict["state_param_dict"][k] = torch.tensor(v).long().to(self.DEVICE)
         tb_dict["xs"] = torch.stack([convert_frames(np.asarray(trans.xs[i]),to_tensor=True,resize_to=(-1,-1)) for
                                                      i in range(len(trans.xs))]).to(self.DEVICE)
         tb_dict["actions"] = torch.from_numpy(np.asarray(trans.actions)).to(self.DEVICE)
@@ -67,27 +86,8 @@ class ReplayMemory(object):
         batch = self.Transition(*list(tb_dict.values()))
         return batch
 
-    def get_zipped_list(self,keys=["x_coords",
-                                                "y_coords",
-                                                "directions"], unique=False, concatenate=True):
 
 
-        one_big_trans = self.Transition(*zip(*self.memory))
-        #grab each field and concatenate all lists
-        separated_fields = [one_big_trans._asdict()[key] for key in keys ]
-        if concatenate:
-            separated_fields = [np.concatenate(field) for field in separated_fields]
-        ret_list = list(zip(*separated_fields))
-        if unique:
-#             if not concatenate:
-#                 #concatenate each transition into one list and take set of it
-#                 unique_ret_list = list(set([tuple(np.concatenate(r)) for r in ret_list]))
-#                 # resplit back into list
-#                 ret_list = [[list(a) for a in np.array_split(np.asarray(url),len(keys))] for url in unique_ret_list]
-#             else:
-            ret_list = list(set(ret_list))
-            
-        return ret_list
     
     def __iter__(self):
         """Iterator that samples without replacement for replay buffer
@@ -141,35 +141,8 @@ class BufferFiller(object):
                                   convert_fxn=self.convert_fxn,
                                   frames_per_trans=frames_per_trans)
         buffer = self.fill_using_iterator(buffer,size,iterator)
-        return buffer  
+        return buffer 
 
-    def fill_with_unvisited_states(self, visited_buffer,size):
-        """fill with transitions not present in 'visited_buffer' """
-        buffer = self.make_empty_buffer()
-        visited_list = copy.deepcopy(visited_buffer.get_zipped_list(concatenate=True))
-        iterator = UnusedPointsIterator(visited_list, 
-                                        env=self.env,
-                                        convert_fxn=self.convert_fxn)
-        if size > len(iterator) or size == -1:
-            size = len(iterator)
-        assert len(iterator) > 0
-        buffer = self.fill_using_iterator(buffer,size,iterator)
-        
-        assert set(visited_buffer.get_zipped_list()).isdisjoint(set(buffer.get_zipped_list()))
-        return buffer
-    
-    def fill_with_list(self,list_, size=-1):
-        """fill with transitions specified in a list of coordinates and actions """
-        buffer = self.make_empty_buffer()
-        iterator = ListIterator(list_of_points=list_,
-                                env=self.env,
-                                convert_fxn=self.convert_fxn)
-        
-        if size > len(iterator) or size == -1:
-            size = len(iterator)
-
-        buffer = self.fill_using_iterator(buffer,size, iterator)
-        return buffer
     
     def fill_using_iterator(self, buffer,size, iterator):
         """fill using the given transition iterator """
@@ -183,3 +156,17 @@ class BufferFiller(object):
                     return buffer
             iterator.reset()
         return buffer
+
+if __name__ is "__main__":
+    env, action_space, grid_size,\
+    num_directions, tot_examples, random_policy = setup_env("MiniGrid-Empty-8x8-v0")
+
+    bf = BufferFiller(env=env,policy=random_policy,)
+
+    rp = bf.fill(128,frames_per_trans=2)
+
+    for t in rp:
+        print(t.state_param_dict["y_coord"].shape)
+        
+    t = rp.sample(20)
+    print(t.state_param_dict["x_coord"].shape)
