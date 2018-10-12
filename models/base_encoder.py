@@ -1,9 +1,3 @@
-
-# coding: utf-8
-
-# In[1]:
-
-
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid

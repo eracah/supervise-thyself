@@ -1,14 +1,12 @@
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
-from utils import convert_frame
 from data.collectors import get_trans_tuple
 import numpy as np
 import random
 from itertools import product
 from data.collectors import DataCollector
-from utils import convert_frame
-from utils import setup_env
+from data.utils import convert_frame, setup_env
 
 def create_zip_all(grid_size=(6,6),num_directions=4):
     all_coord_x,all_coord_y = range(1,grid_size[0] - 1), range(1,grid_size[1] - 1)

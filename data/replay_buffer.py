@@ -1,7 +1,6 @@
 from collections import namedtuple
 import torch
 import numpy as np
-from utils import convert_frames,convert_frame
 import random
 import data.custom_grids
 import gym
@@ -12,7 +11,7 @@ from data.collectors import get_trans_tuple, DataCollector
 from functools import partial
 from data.iterators import PolicyIterator  #, ListIterator, UnusedPointsIterator
 import copy
-from utils import setup_env
+from data.utils import setup_env, convert_frames,convert_frame
 
 class ReplayMemory(object):
     """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample

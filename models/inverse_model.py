@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.functional as F
 from models.base_encoder import Encoder
-from utils import classification_acc
+from evaluations.utils import classification_acc
 
 class ActionPredictor(nn.Module):
     def __init__(self, num_actions, in_ch, h_ch=256):

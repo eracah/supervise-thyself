@@ -1,5 +1,5 @@
 from data.replay_buffer import BufferFiller
-from utils import setup_env, convert_frame
+
 
 def setup_tr_val_test(env, sizes, policy, convert_fxn,batch_size, frames_per_trans=2, just_train=False):
     bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy,
@@ -11,6 +11,7 @@ def setup_tr_val_test(env, sizes, policy, convert_fxn,batch_size, frames_per_tra
 
 
 if __name__ == "__main__":
+    from data.utils import setup_env, convert_frame
     seed = 10
     env, action_space, grid_size, num_directions,tot_examples, random_policy = setup_env(env_name="originalGame-v0",
                                                                                           seed = seed)

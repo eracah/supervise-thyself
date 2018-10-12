@@ -1,11 +1,10 @@
-from utils import convert_frame
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
 import numpy as np
 from collections import namedtuple
 import copy
-from utils import setup_env
+from data.utils import setup_env, convert_frame
 
 def get_trans_tuple():
         tuple_fields = ['xs','actions', 'rewards', 'dones', "state_param_dict"]

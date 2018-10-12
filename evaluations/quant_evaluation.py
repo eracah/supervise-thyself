@@ -253,8 +253,10 @@ class QuantEvals(object):
         self.exp_dir = exp_dir
     
     def get_hyperparam_settings(self):
-        lrs = [10**i for i in range(-5,0,1)]
-        lasso_coeffs = np.linspace(0,1,4)
+        lrs = [0.1]
+        lasso_coeffs = [1]
+        # lrs = [10**i for i in range(-5,0,1)]
+        # lasso_coeffs = np.linspace(0,1,4)
         return lrs, lasso_coeffs
     
     def run_evals(self, encoder_dict):
