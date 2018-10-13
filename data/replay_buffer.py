@@ -76,7 +76,7 @@ class ReplayMemory(object):
     def _convert_fields_to_pytorch_tensors(self,trans):
         tb_dict = trans._asdict()
         for k,v  in trans.state_param_dict.items():
-            tb_dict["state_param_dict"][k] = torch.tensor(v).long().to(self.DEVICE)
+            tb_dict["state_param_dict"][k] = torch.tensor(v).to(self.DEVICE)
         tb_dict["xs"] = torch.stack([convert_frames(np.asarray(trans.xs[i]),to_tensor=True,resize_to=(-1,-1)) for
                                                      i in range(len(trans.xs))]).to(self.DEVICE)
         tb_dict["actions"] = torch.from_numpy(np.asarray(trans.actions)).to(self.DEVICE)

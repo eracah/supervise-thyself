@@ -16,7 +16,7 @@ from data.replay_buffer import BufferFiller
 import argparse
 from models.inverse_model import InverseModel
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
-from evaluations.eval_models import EvalModel, LinearClassifier
+from evaluations.eval_models import EvalModel
 # from utils import mkstr, parse_minigrid_env_name, setup_model_dir, get_upper, setup_exp,setup_exp_dir,\
 #                   parse_minigrid_env_name, get_upper, get_exp_nickname
                     
@@ -47,11 +47,8 @@ def setup_args(test_notebook):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",choices=['MiniGrid-Empty-8x8-v0',
-                                              "originalGame-v0",
-                                              'MiniGrid-Empty-16x16-v0',
-                                              'MiniGrid-Empty-32x32-v0',
-                                              'MiniGrid-Empty-64x64-v0'], default="originalGame-v0"),
+    parser.add_argument("--env_name",choices=["originalGame-v0",
+                                              'MiniGrid-Empty-16x16-v0'], default="originalGame-v0"),
     parser.add_argument("--resize_to",type=int, nargs=2, default=[224, 224])
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=10000)
@@ -60,8 +57,9 @@ def setup_args(test_notebook):
     parser.add_argument("--seed",type=int,default=4)
     parser.add_argument("--model_name",choices=['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', 'beta_vae'],default="inv_model")
     parser.add_argument("--beta",type=float,default=2.0)
-    parser.add_argument("--tr_size",type=int,default=96)
-    parser.add_argument("--val_size",type=int,default=32)
+    parser.add_argument("--tr_size",type=int,default=60000)
+    parser.add_argument("--val_size",type=int,default=10000)
+    parser.add_argument("--test_size",type=int,default=10000)
     parser.add_argument('--mode', choices=['train', 'eval', 'test'], default="train")
     parser.add_argument("--label_name",type=str,default="y_coord")
     args = parser.parse_args()
@@ -72,6 +70,7 @@ def setup_args(test_notebook):
         args.test_notebook=True
         args.batch_size =4 
         args.tr_size = 8
+        args.test_size=8
         args.val_size = 8
         args.resize_to = (96,96)
     else:
@@ -82,8 +81,6 @@ def setup_args(test_notebook):
 class Trainer(object):
     def __init__(self, model, args, experiment):
         self.model = model
-        self.val_buf = val_buf
-        self.tr_buf =tr_buf
         self.args = args
         self.model_name = self.args.model_name
         self.experiment = experiment
@@ -114,16 +111,19 @@ class Trainer(object):
         
         avg_loss = np.mean(losses)
         avg_acc = np.mean(accs)
-        experiment.log_multiple_metrics(dict(loss=avg_loss,acc=avg_acc),prefix=mode, step=self.epoch)
+        self.experiment.log_multiple_metrics(dict(loss=avg_loss,acc=avg_acc),prefix=mode, step=self.epoch)
         if mode == "train":
             print("Epoch %i: "%self.epoch)
         print("\t%s"%mode)
+        if args.mode == "eval" or args.mode == "test":
+            print("\t%s"%args.label_name)
         print("\t\tLoss: %8.4f \n\t\tAccuracy: %9.3f%%"%(avg_loss, 100*avg_acc))
         return avg_loss, avg_acc
     
     def test(self,test_set):
         self.model.eval()
         test_loss, test_acc = self.one_epoch(test_set,mode="test")
+        self.experiment.log_metric("test_acc",test_acc)
         return test_acc
         
     def train(self, tr_buf, val_buf, model_dir):
@@ -151,25 +151,34 @@ class Trainer(object):
 
 
 def setup_model(args, env):
-    model_name = args.model_name
     model_table = {"inv_model":InverseModel, "vae":VAE, "raw_pixel": RawPixelsEncoder,
                                  "lin_proj": RandomLinearProjection,
                                  "rand_cnn": RandomWeightCNN,  "beta_vae": BetaVAE }
     encoder_kwargs = dict(in_ch=3,im_wh=args.resize_to,h_ch=args.hidden_width, embed_len=args.embed_len,  
                         num_actions=env.action_space.n, beta=args.beta)
 
-    base_model = model_table[model_name](**encoder_kwargs).to(args.device)
+    base_model = model_table[args.model_name](**encoder_kwargs).to(args.device)
     if args.mode == "eval" or args.mode == "test":
+        
+        eval_model = EvalModel(encoder=base_model.encoder,
+                       num_classes=env.nclasses_table[args.label_name],
+                       label_name=args.label_name, model_type="classifier").to(args.device)
+        
         weights_path = get_weights_path(args)
-        if weights_path:
-            base_model.load_state_dict(torch.load(str(weights_path)))
-        else:
-            print("No weights available for %s. Using randomly initialized %s"%(model_name,model_name))
+        if args.mode == "eval":
+            if weights_path:
+                eval_model.encoder.load_state_dict(torch.load(str(weights_path)))
+            else:
+                print("No weights available for %s. Using randomly initialized %s"%(args.model_name,args.model_name))
+        if args.mode == "test":
+            if weights_path:
+                eval_model.load_state_dict(torch.load(str(weights_path)))
+            else:
+                print("No weights available for best eval model")
+            
         
        
-        eval_model = EvalModel(encoder=base_model.encoder,
-                               num_classes=env.nclasses_table[args.label_name],
-                               label_name=args.label_name).to(args.device)
+
         model = eval_model
         
     else: # if args.mode=train
@@ -211,7 +220,7 @@ def setup_exp(args):
 
 def get_child_dir(args, mode):
     env_nn = get_env_nickname(args)
-    child_dir = Path(mode) / Path(args.model_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + get_hyp_str(args)) 
+    child_dir = Path(mode) / Path(args.model_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + (get_hyp_str(args) if mode == "train" else args.label_name )  )
     return child_dir
 
 def setup_dir(args,exp_id,basename=".models"):
@@ -221,14 +230,18 @@ def setup_dir(args,exp_id,basename=".models"):
 
                 
 def get_weights_path(args):
+    if args.mode == "eval":
+        weight_mode = "train"
+    if args.mode == "test":
+        weight_mode = "eval"
     best_loss = np.inf
     weights_path = None
-    base_path = Path(".models") / get_child_dir(args,mode="train").parent
-    print(base_path)
+    base_path = Path(".models") / get_child_dir(args,mode=weight_mode).parent
+    #print(base_path)
     if not base_path.exists():
         return None
     for hyp_dir in base_path.iterdir():
-        print(hyp_dir)
+        #print(hyp_dir)
         if args.test_notebook:
             if "nb" not in hyp_dir.name:
                 continue
@@ -236,7 +249,7 @@ def get_weights_path(args):
             if "nb" in hyp_dir.name:
                 continue
         for model_dir in hyp_dir.iterdir():
-            print(model_dir)
+            #print(model_dir)
             model_path = list(model_dir.glob("best_model*"))[0]
             loss = float(str(model_path).split("_")[-1].split(".pt")[0])
             if loss < best_loss:
@@ -252,33 +265,44 @@ def get_weights_path(args):
 if __name__ == "__main__":
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
     args = setup_args(test_notebook)
-    #args.mode = "eval"
-    experiment = setup_exp(args)
-    
-
-    model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
-    print(model_dir)
-    ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)
-    print(ims_dir)
-
     env, random_policy = setup_env(env_name=args.env_name,seed=args.seed, num_coord_buckets=20)
     print("starting to load buffers")
-    tr_buf, val_buf = setup_tr_val_test(env=env,
-                                        sizes=[args.tr_size,args.val_size],
-                                        policy=random_policy, 
-                                        convert_fxn=partial(convert_frame, resize_to=args.resize_to),
-                                        batch_size=args.batch_size,
-                                        just_train=True,
-                                        frames_per_trans=2)
-    if args.resize_to[0] == -1:
-        args.resize_to = tr_buf.memory[0].xs[0].shape[:2]
+    if args.mode == "test":
+        test_buf, = setup_tr_val_test(env=env,
+                            sizes=[args.test_size],
+                            policy=random_policy, 
+                            convert_fxn=partial(convert_frame, resize_to=args.resize_to),
+                            batch_size=args.batch_size,
+                            just_train=True,
+                            frames_per_trans=2)
+        if args.resize_to[0] == -1:
+            args.resize_to = test_buf.memory[0].xs[0].shape[:2]
+    else:
+        tr_buf, val_buf  = setup_tr_val_test(env=env,
+                                    sizes=[args.tr_size,args.val_size],
+                                    policy=random_policy, 
+                                    convert_fxn=partial(convert_frame, resize_to=args.resize_to),
+                                    batch_size=args.batch_size,
+                                    just_train=True,
+                                    frames_per_trans=2)
+
+
+        if args.resize_to[0] == -1:
+            args.resize_to = tr_buf.memory[0].xs[0].shape[:2]
+
+    experiment = setup_exp(args)
+    
+    model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
+    #print(model_dir)
+    ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)
+    #print(ims_dir)
 
     model = setup_model(args, env)
     
     trainer = Trainer(model, args, experiment)
     
     if args.mode == "test":
-        trainer.test()
+        trainer.test(test_buf)
     else:
         trainer.train(tr_buf, val_buf,model_dir)
 
