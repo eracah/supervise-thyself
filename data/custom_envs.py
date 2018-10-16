@@ -22,7 +22,7 @@ class EmptyEnv32x32(EmptyEnv):
 
 register(
     id='MiniGrid-Empty-32x32-v0',
-    entry_point='data.custom_grids:EmptyEnv32x32'
+    entry_point='data.custom_envs:EmptyEnv32x32'
 )
 
 
@@ -35,7 +35,7 @@ class EmptyEnv64x64(EmptyEnv):
 
 register(
     id='MiniGrid-Empty-64x64-v0',
-    entry_point='data.custom_grids:EmptyEnv64x64'
+    entry_point='data.custom_envs:EmptyEnv64x64'
 )
 
 
@@ -48,7 +48,7 @@ class EmptyEnv100x100(EmptyEnv):
 
 register(
     id='MiniGrid-Empty-100x100-v0',
-    entry_point='data.custom_grids:EmptyEnv100x100'
+    entry_point='data.custom_envs:EmptyEnv100x100'
 )
 
 class EmptyEnv128x128(EmptyEnv):
@@ -57,7 +57,7 @@ class EmptyEnv128x128(EmptyEnv):
 
 register(
     id='MiniGrid-Empty-128x128-v0',
-    entry_point='data.custom_grids:EmptyEnv128x128'
+    entry_point='data.custom_envs:EmptyEnv128x128'
 )
 
 
@@ -144,12 +144,12 @@ from gym.envs.registration import registry, register, make, spec
 #from gym_ple.ple_env import PLEEnv
 # Pygame
 # ----------------------------------------
-for game in ['Catcher', 'originalGame','nosemantics','noobject','nosimilarity','noaffordance']: 
-    #, 'FlappyBird','Pixelcopter', 'PuckWorld','RaycastMaze', 'Snake', 'WaterWorld']:
+for game in ['originalGame','nosemantics','noobject','nosimilarity','noaffordance']: 
+    #,'Catcher',  'FlappyBird','Pixelcopter', 'PuckWorld','RaycastMaze', 'Snake', 'WaterWorld']:
     nondeterministic = False
     register(
         id='{}-v0'.format(game),
-        entry_point='data.custom_grids:PLEEnv',
+        entry_point='data.custom_envs:PLEEnv',
         kwargs={'game_name': game, 'display_screen':False},
         tags={'wrapper_config.TimeLimit.max_episode_steps': 100000},
         nondeterministic=nondeterministic,

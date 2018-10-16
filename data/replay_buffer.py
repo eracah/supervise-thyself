@@ -2,10 +2,6 @@ from collections import namedtuple
 import torch
 import numpy as np
 import random
-import data.custom_grids
-import gym
-from gym_minigrid.register import env_list
-from gym_minigrid.minigrid import Grid
 from functools import partial
 from data.collectors import get_trans_tuple, DataCollector
 from functools import partial
@@ -30,6 +26,7 @@ class ReplayMemory(object):
     def __add__(self,other_buffer):
         buf = copy.deepcopy(self)
         buf.memory = buf.memory + other_buffer.memory
+        del other_buffer
         return buf
     
    
@@ -105,15 +102,19 @@ class ReplayMemory(object):
 
 class BufferFiller(object):
     """creates and fills replay buffers with transitions"""
-    def __init__(self,
-                 convert_fxn = partial(convert_frame, resize_to=(64,64)),
-                 env = gym.make("MiniGrid-Empty-8x8-v0"),
-                 policy= lambda x0: np.random.choice(3), capacity=10000,batch_size=32):
+    def __init__(self,env,args,policy=None, capacity=10000):
         self.env = env
-        self.policy = policy
-        self.convert_fxn = convert_fxn
+        self.args = args
+        if policy:
+            self.policy = policy
+        else:
+            rng = np.random.RandomState(args.seed)
+            random_policy = lambda x0: rng.randint(env.action_space.n)
+            self.policy=random_policy
+            
+
         self.capacity = capacity
-        self.batch_size = batch_size
+
         
 
     def split(self, buffer, proportion):
@@ -130,15 +131,13 @@ class BufferFiller(object):
         
         
     def make_empty_buffer(self):
-        return ReplayMemory(capacity=self.capacity, batch_size=self.batch_size)
+        return ReplayMemory(capacity=self.capacity, batch_size=self.args.batch_size)
     
     def fill(self,size, frames_per_trans=2):
         """fill with transitions by just following a policy"""
         buffer = self.make_empty_buffer()
         iterator = PolicyIterator(policy=self.policy,
-                                  env=self.env, 
-                                  convert_fxn=self.convert_fxn,
-                                  frames_per_trans=frames_per_trans)
+                                  env=self.env, args=self.args)
         buffer = self.fill_using_iterator(buffer,size,iterator)
         return buffer 
 
@@ -156,6 +155,22 @@ class BufferFiller(object):
             iterator.reset()
         return buffer
 
+
+    
+def multicore_fill(size,args): #convert_fxn,env, policy, capacity=10000,batch_size=32):
+    pass
+#     from multiprocessing import Pool
+#     p = Pool(args.workers)
+#     kwargs = {k:v for k,v in args.__dict__.items() if k != "processes" and k!="num_frames"}
+    
+#     num_rollouts = math.ceil(args.num_frames / args.rollout_size)
+#     num_rollouts_per_process = math.ceil(num_rollouts / args.processes)
+#     kwargs["num_rollouts"] = num_rollouts_per_process
+#     f = partial(save_dataset,**kwargs)
+#     p.map(f,range(0,num_rollouts,num_rollouts_per_process))
+    
+
+    
 if __name__ is "__main__":
     env, action_space, grid_size,\
     num_directions, tot_examples, random_policy = setup_env("MiniGrid-Empty-8x8-v0")

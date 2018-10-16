@@ -1,11 +1,11 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import random
-import data.custom_grids
+import data.custom_envs
 import gym
 from gym_minigrid.register import env_list
 from gym_minigrid.minigrid import Grid
@@ -16,10 +16,8 @@ from data.replay_buffer import BufferFiller
 import argparse
 from models.inverse_model import InverseModel
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
+from models.utils import get_weights_path
 from evaluations.eval_models import EvalModel
-# from utils import mkstr, parse_minigrid_env_name, setup_model_dir, get_upper, setup_exp,setup_exp_dir,\
-#                   parse_minigrid_env_name, get_upper, get_exp_nickname
-                    
 from evaluations.utils import classification_acc
 import argparse
 import sys
@@ -34,12 +32,10 @@ import time
 from data.tr_val_test_splitter import setup_tr_val_test
 from comet_ml import Experiment
 import os
+from utils import get_child_dir, get_hyp_str
 
-
-# In[2]:
-
-
-def setup_args(test_notebook):
+def setup_args():
+    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
     tmp_argv = copy.deepcopy(sys.argv)
     if test_notebook:
         sys.argv = [""]
@@ -47,8 +43,7 @@ def setup_args(test_notebook):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",choices=["originalGame-v0",
-                                              'MiniGrid-Empty-16x16-v0'], default="originalGame-v0"),
+    parser.add_argument("--env_name",type=str, default="originalGame-v0"),
     parser.add_argument("--resize_to",type=int, nargs=2, default=[224, 224])
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=10000)
@@ -61,7 +56,9 @@ def setup_args(test_notebook):
     parser.add_argument("--val_size",type=int,default=10000)
     parser.add_argument("--test_size",type=int,default=10000)
     parser.add_argument('--mode', choices=['train', 'eval', 'test'], default="train")
+    parser.add_argument("--buckets",type=int,default=20)
     parser.add_argument("--label_name",type=str,default="y_coord")
+    parser.add_argument("--frames_per_trans",type=int,default=2)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
     sys.argv = tmp_argv
@@ -190,25 +187,6 @@ def setup_model(args, env):
 
 # In[3]:
 
-
-def get_upper(st):
-    ret = "".join([s for s in st if s.isupper()])
-    return ret
-
-def parse_minigrid_env_name(name):
-    return name.split("-")[2].split("x")[0]
-
-def get_env_nickname(args):
-    env_nickname = get_upper(args.env_name) if "MiniGrid" in args.env_name else args.env_name.split("-")[0]
-    exp_nickname = str(args.resize_to[0]) + env_nickname + (parse_minigrid_env_name(args.env_name) if "MiniGrid" in args.env_name else "")
-    return exp_nickname
-
-def get_hyp_str(args):
-    hyp_str = ("lr%f"%args.lr).rstrip('0').rstrip('.')
-    if args.model_name == "beta_vae":
-        hyp_str += ("beta=%f"%args.beta).rstrip('0').rstrip('.')
-    return hyp_str  
-
 def setup_exp(args):
     exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.model_name, get_hyp_str(args)])
     experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
@@ -218,91 +196,36 @@ def setup_exp(args):
     experiment.log_multiple_params(args.__dict__)
     return experiment
 
-def get_child_dir(args, mode):
-    env_nn = get_env_nickname(args)
-    child_dir = Path(mode) / Path(args.model_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + (get_hyp_str(args) if mode == "train" else args.label_name )  )
-    return child_dir
+
 
 def setup_dir(args,exp_id,basename=".models"):
     dir_ = Path(basename) / get_child_dir(args,mode=args.mode) / Path(exp_id)
     dir_.mkdir(exist_ok=True,parents=True)
     return dir_
 
-                
-def get_weights_path(args):
-    if args.mode == "eval":
-        weight_mode = "train"
-    if args.mode == "test":
-        weight_mode = "eval"
-    best_loss = np.inf
-    weights_path = None
-    base_path = Path(".models") / get_child_dir(args,mode=weight_mode).parent
-    #print(base_path)
-    if not base_path.exists():
-        return None
-    for hyp_dir in base_path.iterdir():
-        #print(hyp_dir)
-        if args.test_notebook:
-            if "nb" not in hyp_dir.name:
-                continue
-        else:
-            if "nb" in hyp_dir.name:
-                continue
-        for model_dir in hyp_dir.iterdir():
-            #print(model_dir)
-            model_path = list(model_dir.glob("best_model*"))[0]
-            loss = float(str(model_path).split("_")[-1].split(".pt")[0])
-            if loss < best_loss:
-                best_loss = copy.deepcopy(loss)
-                weights_path = copy.deepcopy(model_path)
-            
-    return weights_path
 
+# In[ ]:
 
-# In[4]:
 
 
 if __name__ == "__main__":
-    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False        
-    args = setup_args(test_notebook)
-    env, random_policy = setup_env(env_name=args.env_name,seed=args.seed, num_coord_buckets=20)
-    print("starting to load buffers")
-    if args.mode == "test":
-        test_buf, = setup_tr_val_test(env=env,
-                            sizes=[args.test_size],
-                            policy=random_policy, 
-                            convert_fxn=partial(convert_frame, resize_to=args.resize_to),
-                            batch_size=args.batch_size,
-                            just_train=True,
-                            frames_per_trans=2)
-        if args.resize_to[0] == -1:
-            args.resize_to = test_buf.memory[0].xs[0].shape[:2]
-    else:
-        tr_buf, val_buf  = setup_tr_val_test(env=env,
-                                    sizes=[args.tr_size,args.val_size],
-                                    policy=random_policy, 
-                                    convert_fxn=partial(convert_frame, resize_to=args.resize_to),
-                                    batch_size=args.batch_size,
-                                    just_train=True,
-                                    frames_per_trans=2)
-
-
-        if args.resize_to[0] == -1:
-            args.resize_to = tr_buf.memory[0].xs[0].shape[:2]
-
+    args = setup_args()
     experiment = setup_exp(args)
+    env = setup_env(args)
+    
+    print("starting to load buffers")
+    bufs = setup_tr_val_test(env,args)
     
     model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
-    #print(model_dir)
     ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)
-    #print(ims_dir)
-
+    
     model = setup_model(args, env)
+    #update params
+    experiment.log_multiple_params(args.__dict__)
     
     trainer = Trainer(model, args, experiment)
-    
     if args.mode == "test":
-        trainer.test(test_buf)
+        trainer.test(bufs[0])
     else:
-        trainer.train(tr_buf, val_buf,model_dir)
+        trainer.train(*bufs,model_dir)
 

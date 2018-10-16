@@ -1,6 +1,3 @@
-import gym
-from gym_minigrid.register import env_list
-from gym_minigrid.minigrid import Grid
 from data.collectors import get_trans_tuple
 import numpy as np
 import random
@@ -18,9 +15,7 @@ def create_zip_all(grid_size=(6,6),num_directions=4):
 
 class BaseIterator(object):
     """base iterator"""
-    def __init__(self, env=gym.make("MiniGrid-Empty-6x6-v0"),
-                     convert_fxn=convert_frame):
-        self.convert_fxn = convert_fxn
+    def __init__(self, env):
         self.env = env
         
     def __iter__(self):
@@ -41,11 +36,9 @@ class BaseIterator(object):
 class PolicyIterator(BaseIterator):
     """iterates datapoints following a policy"""
     def __init__(self, policy,
-                        env,
-                     convert_fxn=convert_frame,frames_per_trans=2,stop_at_done=True ):
-        super(PolicyIterator,self).__init__(env,convert_fxn)
-        self.dc = DataCollector(policy=policy,env=env,convert_fxn =convert_fxn,frames_per_trans=frames_per_trans)
-        self.policy = policy
+                        env, args, stop_at_done=True ):
+        super(PolicyIterator,self).__init__(env)
+        self.dc = DataCollector(policy=policy,env=env,args=args)
         self.done = False
         self.stop_at_done = stop_at_done
         self.reset()

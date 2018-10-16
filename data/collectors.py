@@ -1,11 +1,9 @@
-import gym
-from gym_minigrid.register import env_list
-from gym_minigrid.minigrid import Grid
 import numpy as np
 from collections import namedtuple
 import copy
 from data.utils import setup_env, convert_frame
-
+from data.utils import convert_frame
+from functools import partial
 def get_trans_tuple():
         tuple_fields = ['xs','actions', 'rewards', 'dones', "state_param_dict"]
         
@@ -23,20 +21,15 @@ def make_empty_transition():
     
 
 class DataCollector(object):
-    def __init__(self, policy,
-                        env,
-                        convert_fxn=convert_frame,
-                        frames_per_trans=2):
-        self.convert_fxn = convert_fxn
+    def __init__(self, policy, env, args):
+        self.convert_fxn = partial(convert_frame, resize_to=args.resize_to)
         self.policy = policy
         self.env = env
         self.env.reset()
         #to avoid black frame
-        self.env.step(5)
-        # datapoints_per_trans=0 means you just collect the current state and don't take an action
-        # and get a new state
-        assert frames_per_trans >=2, "must have at least an s,a,s triplet"
-        self.frames_per_trans = frames_per_trans
+        self.env.step(env.action_space.n - 1)
+        assert args.frames_per_trans >=2, "must have at least an s,a,s triplet"
+        self.frames_per_trans = args.frames_per_trans
 
         
     def _collect_datapoint(self,obs):

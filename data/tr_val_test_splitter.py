@@ -1,11 +1,18 @@
 from data.replay_buffer import BufferFiller
+from data.utils import convert_frame
+import numpy as np
 
+def setup_tr_val_test(env, args):
+    if args.mode != "test":
+        sizes = [args.tr_size,args.val_size]
+    else:
+        sizes = [args.test_size]
 
-def setup_tr_val_test(env, sizes, policy, convert_fxn,batch_size, frames_per_trans=2, just_train=False):
-    bf = BufferFiller(convert_fxn=convert_fxn, env=env, policy=policy,
-                  batch_size=batch_size) 
-    datasets = [bf.fill(size) for size in sizes]
-    return datasets
+    bf = BufferFiller(env, args) 
+    bufs = [bf.fill(size) for size in sizes]
+    if args.resize_to[0] == -1:
+        args.resize_to = bufs[0].memory[0].xs[0].shape[:2]
+    return bufs
     
 
 
