@@ -1,4 +1,4 @@
-from data.collectors import get_trans_tuple
+from data.collectors import Transition
 import numpy as np
 import random
 from itertools import product
@@ -15,8 +15,8 @@ def create_zip_all(grid_size=(6,6),num_directions=4):
 
 class BaseIterator(object):
     """base iterator"""
-    def __init__(self, env):
-        self.env = env
+    def __init__(self):
+        pass
         
     def __iter__(self):
         return self
@@ -35,17 +35,16 @@ class BaseIterator(object):
 
 class PolicyIterator(BaseIterator):
     """iterates datapoints following a policy"""
-    def __init__(self, policy,
-                        env, args, stop_at_done=True ):
-        super(PolicyIterator,self).__init__(env)
-        self.dc = DataCollector(policy=policy,env=env,args=args)
+    def __init__(self,args,policy=None, stop_at_done=True ):
+        super(PolicyIterator,self).__init__()
+        self.dc = DataCollector(args=args, policy=policy)
         self.done = False
         self.stop_at_done = stop_at_done
         self.reset()
         
 
     def reset(self):
-        _ = self.env.reset()
+        _ = self.dc.env.reset()
         #self.env.agent_pos = self.env.place_agent(size=(self.env.grid_size,self.env.grid_size ))
         self.done = False
         

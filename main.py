@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 
 import random
@@ -59,16 +59,17 @@ def setup_args():
     parser.add_argument("--buckets",type=int,default=20)
     parser.add_argument("--label_name",type=str,default="y_coord")
     parser.add_argument("--frames_per_trans",type=int,default=2)
+    parser.add_argument("--workers",type=int,default=4)
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     if test_notebook:
         args.test_notebook=True
-        args.batch_size =4 
-        args.tr_size = 8
+        args.batch_size =32 
+        args.tr_size = 1000
         args.test_size=8
-        args.val_size = 8
+        args.val_size = 1000
         args.resize_to = (96,96)
     else:
         args.test_notebook = False
@@ -204,8 +205,7 @@ def setup_dir(args,exp_id,basename=".models"):
     return dir_
 
 
-# In[ ]:
-
+# In[2]:
 
 
 if __name__ == "__main__":
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     env = setup_env(args)
     
     print("starting to load buffers")
-    bufs = setup_tr_val_test(env,args)
+    bufs = setup_tr_val_test(args)
     
     model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
     ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)

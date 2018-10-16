@@ -1,15 +1,15 @@
 from data.replay_buffer import BufferFiller
 from data.utils import convert_frame
 import numpy as np
-
-def setup_tr_val_test(env, args):
+from data.replay_buffer import multicore_fill
+def setup_tr_val_test(args):
     if args.mode != "test":
         sizes = [args.tr_size,args.val_size]
     else:
         sizes = [args.test_size]
 
-    bf = BufferFiller(env, args) 
-    bufs = [bf.fill(size) for size in sizes]
+    bf = BufferFiller(args) 
+    bufs = [multicore_fill(size,args) for size in sizes]
     if args.resize_to[0] == -1:
         args.resize_to = bufs[0].memory[0].xs[0].shape[:2]
     return bufs

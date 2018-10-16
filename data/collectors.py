@@ -4,15 +4,16 @@ import copy
 from data.utils import setup_env, convert_frame
 from data.utils import convert_frame
 from functools import partial
-def get_trans_tuple():
-        tuple_fields = ['xs','actions', 'rewards', 'dones', "state_param_dict"]
-        
+from data.utils import setup_env
 
-        Transition = namedtuple("Transition",tuple(tuple_fields))
-        return Transition
+tuple_fields = ['xs','actions', 'rewards', 'dones', "state_param_dict"]
+
+
+Transition = namedtuple("Transition",tuple(tuple_fields))
+
 
 def make_empty_transition():
-    transition_constructor = get_trans_tuple()
+    transition_constructor = Transition
     num_fields = len(transition_constructor.__dict__["_fields"])
     trans_list = [[] for _ in range(num_fields -1)]
     trans_list.append({})
@@ -21,13 +22,19 @@ def make_empty_transition():
     
 
 class DataCollector(object):
-    def __init__(self, policy, env, args):
+    def __init__(self, args, policy=None):
         self.convert_fxn = partial(convert_frame, resize_to=args.resize_to)
-        self.policy = policy
-        self.env = env
+        self.env = setup_env(args)
         self.env.reset()
         #to avoid black frame
-        self.env.step(env.action_space.n - 1)
+        self.env.step(self.env.action_space.n - 1)
+        
+        if policy:
+            self.policy = policy
+        else:
+            rng = np.random.RandomState(args.seed)
+            random_policy = lambda x0: rng.randint(self.env.action_space.n)
+            self.policy=random_policy
         assert args.frames_per_trans >=2, "must have at least an s,a,s triplet"
         self.frames_per_trans = args.frames_per_trans
 

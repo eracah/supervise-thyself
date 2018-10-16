@@ -3,12 +3,12 @@ import torch
 import numpy as np
 import random
 from functools import partial
-from data.collectors import get_trans_tuple, DataCollector
+from data.collectors import Transition, DataCollector
 from functools import partial
 from data.iterators import PolicyIterator  #, ListIterator, UnusedPointsIterator
 import copy
 from data.utils import setup_env, convert_frames,convert_frame
-
+import math
 class ReplayMemory(object):
     """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample
     or like normal data iterator used in most supervised learning problems with sellf.__iter__()"""
@@ -21,20 +21,26 @@ class ReplayMemory(object):
         self.position = 0
 
         
-        self.Transition = get_trans_tuple()
+
             
-    def __add__(self,other_buffer):
-        buf = copy.deepcopy(self)
-        buf.memory = buf.memory + other_buffer.memory
-        del other_buffer
-        return buf
+    # def __add__(self,other_buffer):
+    #     buf = copy.deepcopy(self)
+    #     buf.memory = buf.memory + other_buffer.memory
+    #     del other_buffer
+    #     return buf
+    
+    def extend(self,list_of_other_buffers):
+        for oth_buf in list_of_other_buffers:
+            self.memory = self.memory + oth_buf.memory
+        del list_of_other_buffers
+            
     
    
     def push(self, *args):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
             self.memory.append(None)
-        self.memory[self.position] = self.Transition(*args)
+        self.memory[self.position] = Transition(*args)
         self.position = (self.position + 1) % self.capacity
 
     
@@ -68,7 +74,7 @@ class ReplayMemory(object):
                     new_field[k] = array_of_items_of_key_k
 
             fields.append(new_field)
-        return self.Transition(*fields)
+        return Transition(*fields)
     
     def _convert_fields_to_pytorch_tensors(self,trans):
         tb_dict = trans._asdict()
@@ -79,7 +85,7 @@ class ReplayMemory(object):
         tb_dict["actions"] = torch.from_numpy(np.asarray(trans.actions)).to(self.DEVICE)
         tb_dict["rewards"] = torch.from_numpy(np.asarray(trans.rewards)).to(self.DEVICE)
         tb_dict["dones"] = torch.tensor(trans.dones)
-        batch = self.Transition(*list(tb_dict.values()))
+        batch = Transition(*list(tb_dict.values()))
         return batch
 
 
@@ -102,42 +108,23 @@ class ReplayMemory(object):
 
 class BufferFiller(object):
     """creates and fills replay buffers with transitions"""
-    def __init__(self,env,args,policy=None, capacity=10000):
-        self.env = env
+    def __init__(self,args,policy=None, capacity=10000):
+        #self.env = env
         self.args = args
-        if policy:
-            self.policy = policy
-        else:
-            rng = np.random.RandomState(args.seed)
-            random_policy = lambda x0: rng.randint(env.action_space.n)
-            self.policy=random_policy
+
             
 
         self.capacity = capacity
 
         
 
-    def split(self, buffer, proportion):
-        buf1 = buffer
-#         unique_coords = copy.deepcopy(buffer.get_zipped_list(unique=True,concatenate=False))
-#         len_coords = len(unique_coords)
-        len_mem = len(buf1.memory)
-        split_ind = int(proportion*len_mem)
-        random.shuffle(buf1.memory)
-        buf2 = copy.deepcopy(buf1)
-        buf2.memory[:split_ind] = []
-        buf1.memory[split_ind:] = []
-        return buf1, buf2
-        
-        
     def make_empty_buffer(self):
         return ReplayMemory(capacity=self.capacity, batch_size=self.args.batch_size)
     
     def fill(self,size, frames_per_trans=2):
         """fill with transitions by just following a policy"""
         buffer = self.make_empty_buffer()
-        iterator = PolicyIterator(policy=self.policy,
-                                  env=self.env, args=self.args)
+        iterator = PolicyIterator(args=self.args)
         buffer = self.fill_using_iterator(buffer,size,iterator)
         return buffer 
 
@@ -155,12 +142,21 @@ class BufferFiller(object):
             iterator.reset()
         return buffer
 
-
+def worker_fill(size,args,index):
+    print("worker %i beginning fill!"%index)
+    bf = BufferFiller(args)
+    buf = bf.fill(size)
+    return buf
     
-def multicore_fill(size,args): #convert_fxn,env, policy, capacity=10000,batch_size=32):
-    pass
-#     from multiprocessing import Pool
-#     p = Pool(args.workers)
+def multicore_fill(size,args):
+    from multiprocessing import Pool
+    p = Pool(args.workers)
+    size_per_process = math.ceil(size / args.workers)
+    wf = partial(worker_fill, size_per_process, args)
+    bufs = p.map(wf,range(args.workers))
+    buf1 = bufs[0]
+    buf1.extend(bufs[1:])
+    return buf1
 #     kwargs = {k:v for k,v in args.__dict__.items() if k != "processes" and k!="num_frames"}
     
 #     num_rollouts = math.ceil(args.num_frames / args.rollout_size)
