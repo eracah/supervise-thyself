@@ -71,8 +71,8 @@ class DataCollector(object):
             x, latent_dict = self._collect_datapoint(obs)
             self.append_to_trans_state(trans,x, latent_dict)
     
-            # to_tensor true just in case policy is exactly a neural network
-            action = self.policy(self.convert_fxn(x,to_tensor=True))
+            # todo: be able to handle policy being nn that runs on cpu, so we can still collect data with multiprocessing solely on cpu while DEVICE/args.device is still equal to cuda
+            action = self.policy(self.convert_fxn(x,to_tensor=False))
             obs, reward, done, _ = self.env.step(action)
             obs = self.env.render("rgb_array")
             self.append_to_trans_ard(trans,action,reward,done)

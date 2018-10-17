@@ -4,32 +4,48 @@ import torch.functional as F
 import numpy as np
 from evaluations.utils import classification_acc
 
+
 class EvalModel(nn.Module):
-    def __init__(self, encoder, num_classes,model_type="classifier", label_name="x_coord"):
+    """feeds embeddings from encoder into linear model for inference or prediction depending on what the inputs to the linear model are"""
+    def __init__(self, encoder, num_classes, args):
         super(EvalModel,self).__init__()
         self.encoder = encoder
-        self.model_type = model_type
+        self.model_type = args.model_type # classifier or regressor
+        self.label_name = args.label_name #y_coord or x_coord or other state variables
+        self.eval_mode = args.eval_mode # "infer" or "predict"
         self.model = LinearModel(num_classes=num_classes,
-                                 embed_len=encoder.embed_len,
-                                 model_type=model_type)
-        self.label_name = label_name
+                                 embed_len=encoder.embed_len if self.eval_mode == "infer" else encoder.embed_len + 1,
+                                 model_type=self.model_type)
+     
+
+        
     def forward(self,x):
         pass
         # embeddings = self.encoder(x)
         # logits = self.clsfr(embeddings)
         # return embeddings, logits
-    def loss_acc(self,trans):
+        
+    def get_model_inputs(self,trans):
         x = trans.xs[:,0]
-        y = trans.state_param_dict[self.label_name][:,0]
-        #print(y)
         embeddings = self.encoder(x)
         embeddings = embeddings.detach()
+        
+        if self.eval_mode == "infer":
+            y = trans.state_param_dict[self.label_name][:,0]
+        elif self.eval_mode == "predict":
+            y = trans.state_param_dict[self.label_name][:,1]
+            embeddings = torch.cat([embeddings, trans.actions[:,0,None].float()],dim=1)
+        return embeddings,y
+
+        
+    def loss_acc(self,trans):
+        embeddings, y = self.get_model_inputs(trans)
         loss,acc = self.model.loss_acc(embeddings,y)
         return loss, acc
 
     
 
-        
+# used for prediction or inference just depends on whether y is the next state and if the embedding    
 class LinearModel(nn.Module):
     def __init__(self, num_classes=4, embed_len=32, model_type="classifier"): #,lasso_coeff=0.):
         super(LinearModel,self).__init__()
@@ -73,3 +89,7 @@ class LinearModel(nn.Module):
     @property
     def importance_matrix(self):
         return self.fc.weight.abs().transpose(1,0).data
+    
+    
+    
+    

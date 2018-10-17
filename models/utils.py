@@ -1,6 +1,7 @@
 from pathlib import Path
 from utils import get_child_dir
 import copy
+import numpy as np
 
 def get_weights_path(args):
     if args.mode == "eval":
@@ -22,9 +23,13 @@ def get_weights_path(args):
             if "nb" in hyp_dir.name:
                 continue
         for model_dir in hyp_dir.iterdir():
-            #print(model_dir)
-            model_path = list(model_dir.glob("best_model*"))[0]
-            loss = float(str(model_path).split("_")[-1].split(".pt")[0])
+            print(model_dir)
+            best_models = list(model_dir.glob("best_model*"))
+            if len(best_models) == 0:
+                continue
+            model_path = best_models[0]
+            #print(model_path)
+            loss = float(str(model_path).split("/")[-1].split("_")[-1].split(".pt")[0])
             if loss < best_loss:
                 best_loss = copy.deepcopy(loss)
                 weights_path = copy.deepcopy(model_path)
