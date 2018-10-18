@@ -1,5 +1,6 @@
 from data.replay_buffer import BufferFiller
 from data.utils import convert_frame
+import time
 import numpy as np
 from data.replay_buffer import multicore_fill
 def setup_tr_val_test(args):
@@ -7,9 +8,9 @@ def setup_tr_val_test(args):
         sizes = [args.tr_size,args.val_size]
     else:
         sizes = [args.test_size]
-
-    bf = BufferFiller(args) 
+    t0 = time.time()
     bufs = [multicore_fill(size,args) for size in sizes]
+    print("time for loading was %f"%(time.time() - t0))
     if args.resize_to[0] == -1:
         args.resize_to = bufs[0].memory[0].xs[0].shape[:2]
     return bufs

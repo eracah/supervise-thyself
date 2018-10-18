@@ -139,6 +139,8 @@ class BufferFiller(object):
                 global_size += 1
                 if global_size >= size:
                     return buffer
+                if global_size % 100 == 0:
+                    print(global_size)
             iterator.reset()
         return buffer
 
