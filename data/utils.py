@@ -1,10 +1,8 @@
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale
 import numpy as np
-import data.custom_envs
+from ple import gym_ple
 import gym
-from gym_minigrid.register import env_list
-from gym_minigrid.minigrid import Grid
 import torch
 from functools import partial
 import math
