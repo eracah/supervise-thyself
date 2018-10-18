@@ -67,7 +67,7 @@ def setup_args():
         args.test_size=128
         args.val_size = 64
         args.resize_to = (96,96)
-        args.mode="test"
+        args.mode="eval"
         args.eval_mode="predict"
     else:
         args.test_notebook = False
@@ -209,8 +209,13 @@ def setup_dir(args,exp_id,basename=".models"):
 # In[3]:
 
 
+# In[2]:
+
+
 if __name__ == "__main__":
     args = setup_args()
+    
+
     experiment = setup_exp(args)
     env = setup_env(args)
 
