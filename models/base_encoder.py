@@ -57,7 +57,7 @@ class Encoder(nn.Module):
             for layer in layers:
                 if "BatchNorm" in str(layer):
                     layers.remove(layer)
-        self.encoder = nn.Sequential(*layers)
+        self.ConvEncoder = nn.Sequential(*layers)
                     
         self.fc = nn.Linear(in_features=self.enc_out_shape,
                             out_features=self.embed_len)
@@ -72,11 +72,11 @@ class Encoder(nn.Module):
     def last_im_shape(self):
         inp_shape = (1,self.in_ch,*self.im_wh)
         a = torch.randn(inp_shape)
-        return self.encoder(a).size()[1:]
+        return self.ConvEncoder(a).size()[1:]
     
 
     def forward(self,x):
-        fmaps = self.encoder(x)
+        fmaps = self.ConvEncoder(x)
         self.vec = fmaps.view(fmaps.size(0),-1)
         embedding = self.fc(self.vec)
         return embedding

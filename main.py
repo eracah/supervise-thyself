@@ -68,7 +68,8 @@ def setup_args():
         args.val_size = 64
         args.resize_to = (96,96)
         args.mode="eval"
-        args.eval_mode="predict"
+        args.eval_mode="infer"
+        args.model_name = "raw_pixel"
     else:
         args.test_notebook = False
 
@@ -159,8 +160,8 @@ def setup_model(args, env):
 
     base_model = model_table[args.model_name](**encoder_kwargs).to(args.device)
     if args.mode == "eval" or args.mode == "test":
-        
-        eval_model = EvalModel(encoder=base_model.encoder,
+        encoder = base_model if args.model_name in ["lin_proj", "raw_pixel", "rand_cnn"] else base_model.encoder
+        eval_model = EvalModel(encoder=encoder,
                        num_classes=env.nclasses_table[args.label_name], args=args).to(args.device)
         
         weights_path = get_weights_path(args)
