@@ -142,7 +142,7 @@ class VAE(nn.Module):
         return kldiv, rec
     
     def loss_acc(self,trans):
-        acc = -0.03 # cuz no accuracy
+        acc = None # cuz no accuracy
         kldiv, rec = self.get_kl_rec(trans)
         loss = rec + kldiv
         return loss.mean(),acc
@@ -161,5 +161,5 @@ class BetaVAE(VAE):
     def loss_acc(self,trans):
         kldiv, rec = self.get_kl_rec(trans)
         loss = rec + self.beta * kldiv
-        acc = -0.03 # cuz no accuracy
+        acc = None # cuz no accuracy
         return loss.mean(), acc

@@ -4,8 +4,10 @@ import copy
 import numpy as np
 
 def get_weights_path(args):
-    if args.mode == "eval":
+    if args.mode == "eval" and "forward_" not in args.model_name or args.mode == "train_forward":
         weight_mode = "train"
+    if args.mode == "eval" and "forward_" in args.model_name:
+        weight_mode = "train_forward"
     if args.mode == "test":
         weight_mode = "eval"
     best_loss = np.inf
@@ -23,7 +25,6 @@ def get_weights_path(args):
             if "nb" in hyp_dir.name:
                 continue
         for model_dir in hyp_dir.iterdir():
-            print(model_dir)
             best_models = list(model_dir.glob("best_model*"))
             if len(best_models) == 0:
                 continue

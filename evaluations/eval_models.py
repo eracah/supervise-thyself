@@ -12,13 +12,10 @@ class EvalModel(nn.Module):
         self.encoder = encoder
         self.model_type = args.model_type # classifier or regressor
         self.label_name = args.label_name #y_coord or x_coord or other state variables
-        self.eval_mode = args.eval_mode # "infer" or "predict"
         self.model = LinearModel(num_classes=num_classes,
-                                 embed_len=encoder.embed_len if self.eval_mode == "infer" else encoder.embed_len + 1,
+                                 embed_len=encoder.embed_len,
                                  model_type=self.model_type)
      
-
-        
     def forward(self,x):
         pass
         # embeddings = self.encoder(x)
@@ -30,11 +27,8 @@ class EvalModel(nn.Module):
         embeddings = self.encoder(x)
         embeddings = embeddings.detach()
         
-        if self.eval_mode == "infer":
-            y = trans.state_param_dict[self.label_name][:,0]
-        elif self.eval_mode == "predict":
-            y = trans.state_param_dict[self.label_name][:,1]
-            embeddings = torch.cat([embeddings, trans.actions[:,0,None].float()],dim=1)
+
+        y = trans.state_param_dict[self.label_name][:,0]
         return embeddings,y
 
         
@@ -43,7 +37,22 @@ class EvalModel(nn.Module):
         loss,acc = self.model.loss_acc(embeddings,y)
         return loss, acc
 
+
+class ForwardEvalModel(EvalModel):
+    def __init__(self, forward_predictor, num_classes, args):
+        super(ForwardEvalModel,self).__init__(forward_predictor, num_classes, args)
+        self.forward_predictor = forward_predictor
     
+    # only function that changes
+    def get_model_inputs(self,trans):
+        f2_pred = self.forward_predictor(trans)
+        f2_pred = f2_pred.detach()
+        
+
+        # cuz we looking at da future, so the second one
+        y = trans.state_param_dict[self.label_name][:,1]
+        return f2_pred,y
+        
 
 # used for prediction or inference just depends on whether y is the next state and if the embedding    
 class LinearModel(nn.Module):

@@ -22,8 +22,6 @@ from functools import partial
 
 
 # In[10]:
-
-
 class Encoder(nn.Module):
     def __init__(self,im_wh=(64,64),in_ch=3,
                  h_ch=32,embed_len=32, 

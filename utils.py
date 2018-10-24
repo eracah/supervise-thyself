@@ -40,9 +40,9 @@ def get_child_dir(args, mode):
     
     child_dir = Path(mode)
     if mode == "eval" or mode == "test":
-        child_dir = child_dir/ Path(args.eval_mode) / Path(args.label_name)
+        child_dir = child_dir / Path(args.label_name)
     
-    child_dir = child_dir / Path(args.model_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + "" if mode == "test" else get_hyp_str(args))
+    child_dir = child_dir / Path(args.model_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + ("" if mode == "test" else get_hyp_str(args) ))
     
     
     

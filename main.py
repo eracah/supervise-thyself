@@ -5,13 +5,9 @@
 
 
 import random
-from models.base_encoder import Encoder
+from models.setup import setup_model
 from data.utils import setup_env
 import argparse
-from models.inverse_model import InverseModel
-from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
-from models.utils import get_weights_path
-from evaluations.eval_models import EvalModel
 from evaluations.utils import classification_acc
 import argparse
 import sys
@@ -27,6 +23,13 @@ from data.tr_val_test_splitter import setup_tr_val_test
 from comet_ml import Experiment
 import os
 from utils import get_child_dir, get_hyp_str
+
+
+# In[2]:
+
+
+model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn']
+model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 
 def setup_args():
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
@@ -44,32 +47,32 @@ def setup_args():
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--model_name",choices=['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', 'beta_vae'],default="inv_model")
+    parser.add_argument("--model_name",choices=model_names,default="inv_model")
     parser.add_argument("--beta",type=float,default=2.0)
     parser.add_argument("--tr_size",type=int,default=60000)
     parser.add_argument("--val_size",type=int,default=10000)
     parser.add_argument("--test_size",type=int,default=10000)
-    parser.add_argument('--mode', choices=['train', 'eval', 'test'], default="train")
+    parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test'], default="train")
     parser.add_argument("--buckets",type=int,default=20)
     parser.add_argument("--label_name",type=str,default="y_coord")
     parser.add_argument("--frames_per_trans",type=int,default=2)
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--model_type",type=str,default="classifier")
-    parser.add_argument("--eval_mode",type=str,default="infer")
+    #parser.add_argument("--eval_mode",type=str,default="infer")
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     if test_notebook:
         args.test_notebook=True
-        args.batch_size =32 
-        args.tr_size = 96
-        args.test_size=128
-        args.val_size = 64
-        args.resize_to = (96,96)
-        args.mode="eval"
-        args.eval_mode="infer"
-        args.model_name = "raw_pixel"
+        args.workers=1
+        args.batch_size =2 
+        args.tr_size = 4
+        args.test_size=4
+        args.val_size = 4
+        args.resize_to = (64,64)
+        args.mode="test"
+        args.model_name = "forward_inv_model"
     else:
         args.test_notebook = False
 
@@ -77,6 +80,9 @@ def setup_args():
 
 
 # In[2]:
+
+
+# In[3]:
 
 
 class Trainer(object):
@@ -110,15 +116,21 @@ class Trainer(object):
             losses.append(loss)
             accs.append(acc)
         
-        avg_loss = np.mean(losses)
-        avg_acc = np.mean(accs)
-        self.experiment.log_multiple_metrics(dict(loss=avg_loss,acc=avg_acc),prefix=mode, step=self.epoch)
         if mode == "train":
             print("Epoch %i: "%self.epoch)
         print("\t%s"%mode)
         if args.mode == "eval" or args.mode == "test":
-            print("\t%s %s"%(args.eval_mode,args.label_name))
-        print("\t\tLoss: %8.4f \n\t\tAccuracy: %9.3f%%"%(avg_loss, 100*avg_acc))
+            print("\t %s"%(args.label_name))
+        
+        avg_loss = np.mean(losses)
+        self.experiment.log_metric(avg_loss, mode + "_loss", step=self.epoch)
+        print("\t\tLoss: %8.4f"%(avg_loss))
+        if None in accs:
+            avg_acc =None
+        else:
+            avg_acc = np.mean(accs)
+            self.experiment.log_metric(avg_acc, mode + "_acc", step=self.epoch)
+            print("\t\tAccuracy: %9.3f%%"%(100*avg_acc))
         return avg_loss, avg_acc
     
     def test(self,test_set):
@@ -145,50 +157,16 @@ class Trainer(object):
             
             if self.epoch == 1 or val_loss < best_val_loss:
                 best_val_loss = copy.deepcopy(val_loss)
-                for f in model_dir.glob("best_model*"):
+                old = [f for f in model_dir.glob("best_model*")]
+                for f in old:
                     os.remove(str(f))
-                torch.save(state_dict, model_dir / Path(  ("best_model_%f.pt"%best_val_loss).rstrip('0').rstrip('.')))
+                #print("hey")
+                save_path = model_dir / Path(("best_model_%f.pt"%best_val_loss).rstrip('0').rstrip('.'))
+                #print(save_path)
+                torch.save(state_dict,save_path )
 
 
 
-def setup_model(args, env):
-    model_table = {"inv_model":InverseModel, "vae":VAE, "raw_pixel": RawPixelsEncoder,
-                                 "lin_proj": RandomLinearProjection,
-                                 "rand_cnn": RandomWeightCNN,  "beta_vae": BetaVAE }
-    encoder_kwargs = dict(in_ch=3,im_wh=args.resize_to,h_ch=args.hidden_width, embed_len=args.embed_len,  
-                        num_actions=env.action_space.n, beta=args.beta)
-
-    base_model = model_table[args.model_name](**encoder_kwargs).to(args.device)
-    if args.mode == "eval" or args.mode == "test":
-        encoder = base_model if args.model_name in ["lin_proj", "raw_pixel", "rand_cnn"] else base_model.encoder
-        eval_model = EvalModel(encoder=encoder,
-                       num_classes=env.nclasses_table[args.label_name], args=args).to(args.device)
-        
-        weights_path = get_weights_path(args)
-        if args.mode == "eval":
-            if weights_path:
-                eval_model.encoder.load_state_dict(torch.load(str(weights_path)))
-            else:
-                print("No weights available for %s. Using randomly initialized %s"%(args.model_name,args.model_name))
-        if args.mode == "test":
-            if weights_path:
-                eval_model.load_state_dict(torch.load(str(weights_path)))
-            else:
-                print("No weights available for best eval model")
-            
-        
-       
-
-        model = eval_model
-        
-    else: # if args.mode=train
-        model = base_model
-        
-        
-    return model    
-
-
-# In[3]:
 
 def setup_exp(args):
     exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.model_name, get_hyp_str(args)])
@@ -210,7 +188,7 @@ def setup_dir(args,exp_id,basename=".models"):
 # In[3]:
 
 
-# In[2]:
+# In[4]:
 
 
 if __name__ == "__main__":
@@ -224,12 +202,15 @@ if __name__ == "__main__":
     bufs = setup_tr_val_test(args)
     
 
-    model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
-    ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)
-    
+    # setup models before dirs because some args get changed in this fxn
     model = setup_model(args, env)
     
 
+    model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
+    print(model_dir)
+
+    ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)
+    
     #update params
     experiment.log_multiple_params(args.__dict__)
     
