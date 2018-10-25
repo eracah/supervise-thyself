@@ -86,19 +86,10 @@ if __name__ == "__main__":
     env, action_space, grid_size,\
     num_directions, tot_examples, random_policy = setup_env("MiniGrid-Empty-8x8-v0")
 
-    # "originalGame-v0"
-    #"MiniGrid-Empty-8x8-v0"
-
 
 
     dc = DataCollector(policy=random_policy,env=env, frames_per_trans=5)
     trans = dc.collect_transition_per_the_policy()
-    #     test_coords = (trans.x_coords[0], trans.y_coords[1])
-    #     test_dir = trans.directions[0]
-    #     spec_trans = dc.collect_specific_datapoint(test_coords,test_dir)
-
-    #     assert (spec_trans.x_coords[0], spec_trans.y_coords[0])== test_coords
-    #     assert spec_trans.directions[0] == test_dir
 
     from matplotlib import pyplot as plt
 
@@ -106,42 +97,4 @@ if __name__ == "__main__":
 
     plt.imshow(trans.xs[0])
     
-    
-# import os
-# import sys
-# import numpy as np
-# from matplotlib import pyplot as plt
-
-# %matplotlib inline
-
-# import data.custom_grids
-
-# import gym
-
-# #zip([97, 100, 32, 119, 115, None],["left","right","jump","up ladder", "down"])
-# env = gym.make("originalGame-v0")
-# nb_frames = 2
-# done=False
-# obs = env.reset()
-# # init_x,init_y = env.env.game_state.game.newGame.Players[0].getPosition()
-# # upd = np.random.choice([0,70,150])#np.random.randint(init_y)
-# # env.env.game_state.game.newGame.Players[0].updateY(-1*upd)
-# obs,reward, done, _ = env.step(3)
-# for f in range(nb_frames):
-#     if done: #check if the game is over
-#         print("game over!")
-#         env.reset()
-#         init_x,init_y = env.env.game_state.game.newGame.Players[0].getPosition()
-#         upd = np.random.choice([0,70,150])
-#         env.env.game_state.game.newGame.Players[0].updateY(-1*upd)
-        
-    
-#     player = env.env.game_state.game.newGame.Players[0]
-#     pos, isj, ol = player.getPosition(), player.isJumping, player.onLadder
-#     if f != -1:
-#         plt.figure(f)
-#         plt.imshow(obs,origin="upper")
-#         plt.title("position: %.0f, %.0f; is_jumping: %i; on_ladder: %i"%(pos[0],pos[1],isj,ol))
-#     action = np.random.choice(env.action_space.n)#actions[f]#
-#     obs, reward, done, _ = env.step(action)
     

@@ -10,7 +10,7 @@ from data import get_state_params
 
 
 
-def setup_env(args):
+def setup_env(args):        
     env = gym.make(args.env_name)
     env.seed(args.seed)
     num_buckets = args.buckets

@@ -8,8 +8,12 @@ from functools import partial
 import math
 
 def bucket_coord(coord,num_buckets, max_coord, min_coord=0):
-    assert coord < max_coord
-    assert coord >= min_coord
+    try:
+        assert (coord < max_coord and coord >= min_coord)
+    except:
+        print("coord: %i, max: %i, min: %i, num_buckets: %i"%(coord, max_coord, min_coord,num_buckets))
+        assert False
+        #coord = 0
     coord_range = (max_coord - min_coord) + 1
     thresh =  coord_range/num_buckets
     bucketed_coord =  np.floor((coord - min_coord) /thresh)
@@ -21,16 +25,16 @@ def atari_get_latent_dict(env):
     ram = env.env.ale.getRAM()
     len_y, len_x, _ = env.observation_space.shape
     if env_name == 'PrivateEye-v0':
-        x_coord, y_coord = ram[63], ram[86]
-        #y_coord already bucketed to 40
+        x_coord, y_coord = ram[63], ram[86] #y_coord already bucketed to 40
         x_coord = bucket_coord(x_coord,40,len_x)
+        latent_dict = dict(x_coord=x_coord,y_coord=y_coord)
     elif env_name == 'Pitfall-v0':
-        x_coord, y_coord = ram[97], ram[105]
+        x_coord= ram[97] # don't do y_coord its all messed up, y_coord = ram[105]
         x_coord = bucket_coord(x_coord,40, max_coord=len_x, min_coord=0)
-        y_coord = bucket_coord(y_coord,20, max_coord=len_y, min_coord=0)
+        latent_dict = dict(x_coord=x_coord)
     else:
         assert False
-    latent_dict = dict(x_coord=x_coord,y_coord=y_coord)
+
     return latent_dict
 
 def atari_get_nclasses_table(env):
@@ -38,12 +42,13 @@ def atari_get_nclasses_table(env):
     if env_name == 'PrivateEye-v0':
         num_x = 40
         num_y = 40
+        nclasses_table = dict(x_coord=num_x, y_coord=num_y)
     elif env_name == 'Pitfall-v0':
         num_x = 40
-        num_y = 20 
+        nclasses_table = dict(x_coord=num_x)
     else:
         assert False
-    nclasses_table = dict(x_coord=num_x, y_coord=num_y)
+
     return nclasses_table
 
 
