@@ -27,8 +27,11 @@ def setup_model(args, env):
     # eval for forward_models
     elif args.mode == "eval" and "forward_" in args.model_name:
         model = setup_eval_forward_model(encoder,args,env)
+        
+    elif args.mode == "test" and "forward_" in args.model_name:
+        model = setup_test_forward_model(encoder,args,env)
     
-    # train_forward, eval (not forward) and test
+    # train_forward, eval (not forward) and test (not forward)
     else:
         this_module = sys.modules[__name__]
         setup_fn = getattr(this_module, "setup_" + args.mode + "_model")
@@ -36,8 +39,14 @@ def setup_model(args, env):
         
     return model    
 
-
-
+def setup_test_forward_model(encoder,args,env):
+    num_actions = env.action_space.n
+    forward_model = ForwardModel(encoder, n_actions=num_actions).to(args.device)
+    eval_forward_model = ForwardEvalModel(forward_predictor=forward_model,
+                   num_classes=env.nclasses_table[args.label_name], args=args).to(args.device)
+    load_weights(eval_forward_model, args)
+    return eval_forward_model
+    
 
 def setup_eval_forward_model(encoder,args,env):
     num_actions = env.action_space.n

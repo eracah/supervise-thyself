@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -23,66 +23,6 @@ from data.tr_val_test_splitter import setup_tr_val_test
 from comet_ml import Experiment
 import os
 from utils import get_child_dir, get_hyp_str
-
-
-# In[2]:
-
-
-model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn']
-model_names = model_names + ["forward_" + model_name for model_name in model_names ]
-
-def setup_args():
-    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
-    tmp_argv = copy.deepcopy(sys.argv)
-    if test_notebook:
-        sys.argv = [""]
-    
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default="originalGame-v0"),
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[224, 224])
-    parser.add_argument("--batch_size",type=int,default=32)
-    parser.add_argument("--epochs",type=int,default=10000)
-    parser.add_argument("--hidden_width",type=int,default=32)
-    parser.add_argument("--embed_len",type=int,default=32)
-    parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--model_name",choices=model_names,default="inv_model")
-    parser.add_argument("--beta",type=float,default=2.0)
-    parser.add_argument("--tr_size",type=int,default=60000)
-    parser.add_argument("--val_size",type=int,default=10000)
-    parser.add_argument("--test_size",type=int,default=10000)
-    parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test'], default="train")
-    parser.add_argument("--buckets",type=int,default=20)
-    parser.add_argument("--label_name",type=str,default="y_coord")
-    parser.add_argument("--frames_per_trans",type=int,default=2)
-    parser.add_argument("--workers",type=int,default=4)
-    parser.add_argument("--model_type",type=str,default="classifier")
-    #parser.add_argument("--eval_mode",type=str,default="infer")
-    args = parser.parse_args()
-    args.resize_to = tuple(args.resize_to)
-    sys.argv = tmp_argv
-    args.device = "cuda" if torch.cuda.is_available() else "cpu"
-    if test_notebook:
-        args.test_notebook=True
-        args.workers=1
-        args.batch_size =2 
-        args.tr_size = 4
-        args.test_size=4
-        args.val_size = 4
-        args.resize_to = (64,64)
-        args.mode="test"
-        args.model_name = "forward_inv_model"
-    else:
-        args.test_notebook = False
-
-    return args
-
-
-# In[2]:
-
-
-# In[3]:
 
 
 class Trainer(object):
@@ -185,21 +125,71 @@ def setup_dir(args,exp_id,basename=".models"):
     return dir_
 
 
-# In[3]:
+
+model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn']
+model_names = model_names + ["forward_" + model_name for model_name in model_names ]
+
+def setup_args():
+    test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
+    tmp_argv = copy.deepcopy(sys.argv)
+    if test_notebook:
+        sys.argv = [""]
+    
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--lr", type=float, default=0.00025)
+    parser.add_argument("--env_name",type=str, default="Pitfall-v0"),
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[224, 224])
+    parser.add_argument("--batch_size",type=int,default=32)
+    parser.add_argument("--epochs",type=int,default=10000)
+    parser.add_argument("--hidden_width",type=int,default=32)
+    parser.add_argument("--embed_len",type=int,default=32)
+    parser.add_argument("--seed",type=int,default=4)
+    parser.add_argument("--model_name",choices=model_names,default="inv_model")
+    parser.add_argument("--beta",type=float,default=2.0)
+    parser.add_argument("--tr_size",type=int,default=10000)
+    parser.add_argument("--val_size",type=int,default=1000)
+    parser.add_argument("--test_size",type=int,default=1000)
+    parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test'], default="train")
+    parser.add_argument("--buckets",type=int,default=20)
+    parser.add_argument("--label_name",type=str,default="x_coord")
+    parser.add_argument("--frames_per_trans",type=int,default=2)
+    parser.add_argument("--workers",type=int,default=4)
+    parser.add_argument("--model_type",type=str,default="classifier")
+    #parser.add_argument("--eval_mode",type=str,default="infer")
+    args = parser.parse_args()
+    args.resize_to = tuple(args.resize_to)
+    sys.argv = tmp_argv
+    args.device = "cuda" if torch.cuda.is_available() else "cpu"
+    if test_notebook:
+        args.test_notebook=True
+        args.workers=1
+        args.batch_size = 8  
+        args.tr_size = 16
+        args.test_size= 8
+        args.val_size = 16
+        args.resize_to = (64,64)
+        args.mode="test"
+        args.model_name = "forward_inv_model"
+    else:
+        args.test_notebook = False
+
+    return args
 
 
-# In[4]:
+# In[2]:
 
 
 if __name__ == "__main__":
     args = setup_args()
-    
 
     experiment = setup_exp(args)
     env = setup_env(args)
+    
 
     print("starting to load buffers")
     bufs = setup_tr_val_test(args)
+
     
 
     # setup models before dirs because some args get changed in this fxn
@@ -219,4 +209,10 @@ if __name__ == "__main__":
         trainer.test(bufs[0])
     else:
         trainer.train(*bufs,model_dir)
+
+
+# In[ ]:
+
+
+
 
