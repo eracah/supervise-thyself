@@ -9,7 +9,9 @@ def setup_tr_val_test(args):
     else:
         sizes = [args.test_size]
     t0 = time.time()
-    bufs = [multicore_fill(size,args) for size in sizes]
+    bf = BufferFiller(args)
+    bufs = [bf.fill(size) for size in sizes]
+    #bufs = [multicore_fill(size,args) for size in sizes]
     print("time for loading was %f"%(time.time() - t0))
     if args.resize_to[0] == -1:
         args.resize_to = bufs[0].memory[0].xs[0].shape[:2]
