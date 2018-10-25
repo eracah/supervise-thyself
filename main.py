@@ -1,3 +1,9 @@
+
+# coding: utf-8
+
+# In[1]:
+
+
 #!/usr/bin/env python
 # coding: utf-8
 
@@ -138,8 +144,8 @@ def setup_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default="Pitfall-v0"),
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[224, 224])
+    parser.add_argument("--env_name",type=str, default="PrivateEye-v0"),
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=10000)
     parser.add_argument("--hidden_width",type=int,default=32)
@@ -168,9 +174,9 @@ def setup_args():
         args.tr_size = 16
         args.test_size= 8
         args.val_size = 16
-        args.resize_to = (64,64)
-        args.mode="test"
-        args.model_name = "forward_inv_model"
+        args.resize_to = (128,128)
+        args.mode="train"
+        args.model_name = "vae"
     else:
         args.test_notebook = False
 
@@ -212,6 +218,7 @@ if __name__ == "__main__":
 
 
 # In[ ]:
+
 
 
 
