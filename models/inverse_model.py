@@ -14,7 +14,17 @@ class ActionPredictor(nn.Module):
         )
     def forward(self,x):
         return self.predictor(x)
-        
+    
+    
+class LinActionPredictor(nn.Module):
+    def __init__(self, num_actions, in_ch, h_ch=256):
+        super(LinActionPredictor,self).__init__()
+        self.predictor = nn.Linear(in_features=in_ch, out_features=num_actions)
+
+    def forward(self,x):
+        return self.predictor(x)
+
+
 
 class InverseModel(nn.Module):
     def __init__(self, in_ch=3, im_wh=(64,64), h_ch=32, embed_len=32, batch_norm=False, num_actions=3, **kwargs):
@@ -39,3 +49,9 @@ class InverseModel(nn.Module):
         acc = classification_acc(logits=pred,true=true)
         loss = nn.CrossEntropyLoss()(pred,true)
         return loss, acc
+
+class LinInverseModel(InverseModel):
+    def __init__(self, in_ch=3, im_wh=(64,64), h_ch=32, embed_len=32, batch_norm=False, num_actions=3, **kwargs):
+        super(LinInverseModel,self).__init__()
+        self.ap = LinActionPredictor(num_actions=num_actions,in_ch=2*self.encoder.embed_len)
+    

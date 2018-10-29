@@ -7,7 +7,7 @@ from pathlib import Path
 
 games = ["Pitfall-v0", "PrivateEye-v0"] 
 encoders = ["inv_model", "vae", "rand_cnn"]
-lrs = [0.0001, 0.00001]
+lrs = [0.1,0.01, 0.001]
 main_file = "main.py"
 mode= "train_forward"
 seed = 5

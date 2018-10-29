@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 games = ["Pitfall-v0", "PrivateEye-v0"]
-encoders = ["rand_cnn" ]
+encoders = ["inv_model", "vae"]
 label_names = ["x_coord"] #, "y_coord", "on_ladder"]
 #eval_modes = ["infer","predict"]
 main_file = "main.py"
@@ -18,6 +18,6 @@ for game in games:
                     args = ["sbatch",
                             "./submit_scripts/run_gpu.sl",
                             "%s --model_name %s --env_name %s --label_name %s --mode %s"%(main_file,enc,game,label_name, mode),
-                            "--test_size %i --batch_size %i"%(1000,64),"--seed %i"%(seed)]
+                            "--test_size %i --batch_size %i"%(5000,64),"--seed %i"%(seed)]
                     print(" ".join(args))
                     subprocess.run(args)

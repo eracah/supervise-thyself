@@ -6,13 +6,12 @@ import sys
 from pathlib import Path
 
 games = ["Pitfall-v0", "PrivateEye-v0"] 
-encoders = ["inv_model", "vae"]
+encoders = ["forward_inv_model", "forward_vae", "forward_rand_cnn"]
 label_names = ["x_coord"]
-# eval_modes = ["infer","predict"]
-lrs = [0.0001,0.001]
+lrs = [0.001,0.0001]
 main_file = "main.py"
 mode = "eval"
-seed =6 
+seed = 6 
 for game in games:
     for label_name in label_names:
             for lr in lrs:

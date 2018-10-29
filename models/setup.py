@@ -2,7 +2,7 @@ import torch
 import sys
 from models.utils import get_weights_path
 from models.base_encoder import Encoder
-from models.inverse_model import InverseModel
+from models.inverse_model import InverseModel, LinInverseModel
 from models.forward_model import ForwardModel
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
 from evaluations.eval_models import EvalModel, ForwardEvalModel
@@ -11,7 +11,7 @@ from evaluations.eval_models import EvalModel, ForwardEvalModel
 def setup_model(args, env):
     model_table = {"inv_model":InverseModel, "vae":VAE, "raw_pixel": RawPixelsEncoder,
                                  "lin_proj": RandomLinearProjection,
-                                 "rand_cnn": RandomWeightCNN,  "beta_vae": BetaVAE}
+                                 "rand_cnn": RandomWeightCNN,  "beta_vae": BetaVAE, "linv_model":LinInverseModel}
 
     encoder_kwargs = dict(in_ch=3,im_wh=args.resize_to,h_ch=args.hidden_width, embed_len=args.embed_len,  
                         num_actions=env.action_space.n, beta=args.beta)

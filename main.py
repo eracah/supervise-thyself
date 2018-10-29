@@ -132,7 +132,7 @@ def setup_dir(args,exp_id,basename=".models"):
 
 
 
-model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn']
+model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', 'linv_model']
 model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 
 def setup_args():
