@@ -3,13 +3,15 @@ from utils import get_child_dir
 import copy
 import numpy as np
 
-def get_weights_path(args):
-    if args.mode == "eval" and "forward_" not in args.model_name or args.mode == "train_forward":
-        weight_mode = "train"
-    if args.mode == "eval" and "forward_" in args.model_name:
-        weight_mode = "train_forward"
-    if args.mode == "test":
-        weight_mode = "eval"
+def get_weights_path(args, weight_mode=None):
+    mode, model_name, test_notebook = args.mode, args.model_name, args.test_notebook
+    if weight_mode is None:
+        if mode == "eval" and "forward_" not in model_name or mode == "train_forward":
+            weight_mode = "train"
+        if mode == "eval" and "forward_" in model_name:
+            weight_mode = "train_forward"
+        if mode == "test":
+            weight_mode = "eval"
     best_loss = np.inf
     weights_path = None
     base_path = Path(".models") / get_child_dir(args,mode=weight_mode).parent
@@ -18,7 +20,7 @@ def get_weights_path(args):
         return None
     for hyp_dir in base_path.iterdir():
         #print(hyp_dir)
-        if args.test_notebook:
+        if test_notebook:
             if "nb" not in hyp_dir.name:
                 continue
         else:
