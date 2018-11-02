@@ -4,7 +4,8 @@ from models.utils import get_weights_path
 from models.base_encoder import Encoder
 from models.inverse_model import InverseModel, LinInverseModel
 from models.forward_model import ForwardModel
-from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN, VAE, BetaVAE
+from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
+from models.vae import VAE, BetaVAE
 from evaluations.eval_models import EvalModel, ForwardEvalModel
 
 
