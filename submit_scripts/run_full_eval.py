@@ -5,10 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-games = ["Pitfall-v0", "PrivateEye-v0"] 
-encoders = ["forward_inv_model", "forward_vae", "forward_rand_cnn"]
+games = ["Pitfall-v0"] 
+encoders = ["rand_cnn"]
 label_names = ["x_coord"]
-lrs = [0.001,0.0001]
+lrs = [0.01]
 main_file = "main.py"
 mode = "eval"
 seed = 6 
