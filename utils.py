@@ -17,6 +17,23 @@ import copy
 model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', 'linv_model']
 model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 
+
+def setup_exp(args):
+    exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.model_name, get_hyp_str(args)])
+    experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
+                            project_name="self-supervised-survey",
+                            workspace="eracah")
+    experiment.set_name(exp_name)
+    experiment.log_multiple_params(args.__dict__)
+    return experiment
+
+
+
+def setup_dir(args,exp_id,basename=".models"):
+    dir_ = Path(basename) / get_child_dir(args,mode=args.mode) / Path(exp_id)
+    dir_.mkdir(exist_ok=True,parents=True)
+    return dir_
+
 def setup_args():
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
     tmp_argv = copy.deepcopy(sys.argv)
@@ -39,7 +56,7 @@ def setup_args():
     parser.add_argument("--val_size",type=int,default=1000)
     parser.add_argument("--test_size",type=int,default=1000)
     parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test'], default="train")
-    parser.add_argument("--buckets",type=int,default=20)
+    parser.add_argument("--buckets",type=int,default=8)
     parser.add_argument("--label_name",type=str,default="x_coord")
     parser.add_argument("--frames_per_trans",type=int,default=2)
     parser.add_argument("--workers",type=int,default=4)
