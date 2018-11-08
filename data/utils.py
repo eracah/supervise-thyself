@@ -12,9 +12,8 @@ from data import get_state_params
 
 def setup_env(args):        
     env = gym.make(args.env_name)
-    env.seed(args.seed)
-    num_buckets = args.buckets
-    env.num_buckets = num_buckets
+    env.seed(args.seed) 
+    env.num_buckets = args.buckets
     action_space = list(range(env.action_space.n))
     if hasattr(env.env, "ale"):
         get_latent_dict = get_state_params.atari_get_latent_dict
@@ -25,7 +24,7 @@ def setup_env(args):
     else:
         try:
             get_latent_dict = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_latent_dict")
-            nclasses_table = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_nclasses_table")
+            nclasses_table = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_nclasses_table")(env)
         except:
             raise NotImplementedError
 
