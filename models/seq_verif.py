@@ -25,10 +25,11 @@ class InOrderBinaryClassifier(nn.Module):
         
 
 class ShuffleNLearn(nn.Module):
-    def __init__(self,num_frames=3, in_ch=3, im_wh=(64,64), h_ch=32, embed_len=32, batch_norm=False, num_actions=3, **kwargs):
+    def __init__(self, num_frames=3, embed_len=32, **kwargs):
         super(ShuffleNLearn,self).__init__()
-        self.encoder = Encoder(in_ch=in_ch, im_wh=im_wh, h_ch=h_ch, embed_len=embed_len, batch_norm=batch_norm)
-        self.bin_clsf = InOrderBinaryClassifier(in_ch=num_frames*self.encoder.embed_len)
+        self.embed_len = embed_len
+        self.encoder = Encoder(embed_len = embed_len, **kwargs)
+        self.bin_clsf = InOrderBinaryClassifier(in_ch=num_frames*self.embed_len)
     
     def forward(self,xs):
         f = torch.cat([self.encoder(x) for x in xs])

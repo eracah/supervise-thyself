@@ -45,18 +45,10 @@ class Decoder(nn.Module):
         return im       
         
 class VAE(nn.Module):
-    def __init__(self,in_ch=3,
-                          im_wh=(64,64),
-                          h_ch=32,
-                          embed_len=32,
-                          batch_norm=False, **kwargs):
+    def __init__(self,embed_len=32, **kwargs):
         super(VAE, self).__init__()
         self.embed_len = embed_len
-        self.encoder = Encoder(in_ch=in_ch,
-                              im_wh=im_wh,
-                              h_ch=h_ch,
-                              embed_len=embed_len,
-                              batch_norm=batch_norm)
+        self.encoder = Encoder(embed_len=embed_len, **kwargs)
         
         self.logvar_fc = nn.Linear(in_features=self.encoder.enc_out_shape,
                             out_features=self.embed_len)
@@ -94,20 +86,3 @@ class VAE(nn.Module):
         kldiv, rec = self.get_kl_rec(trans)
         loss = rec + kldiv
         return loss.mean(),acc
-
-class BetaVAE(VAE):
-    def __init__(self,beta=1.,in_ch=3,
-                          im_wh=(64,64),
-                          h_ch=32,
-                          embed_len=32,
-                          batch_norm=False, **kwargs):
-        
-        super(BetaVAE, self).__init__(in_ch, im_wh, h_ch, embed_len, batch_norm)
-        self.beta = beta
-        
-
-    def loss_acc(self,trans):
-        kldiv, rec = self.get_kl_rec(trans)
-        loss = rec + self.beta * kldiv
-        acc = None # cuz no accuracy
-        return loss.mean(), acc

@@ -23,9 +23,5 @@ class RandomLinearProjection(nn.Module):
         
 
 class RandomWeightCNN(Encoder):
-    def __init__(self,im_wh=(64,64),in_ch=3,
-                 h_ch=32,embed_len=32, 
-                 batch_norm=False, **kwargs):
-        super(RandomWeightCNN,self).__init__(im_wh=im_wh,in_ch=in_ch,
-                 h_ch=h_ch,embed_len=embed_len, 
-                 batch_norm=batch_norm)
+    def __init__(self, **kwargs):
+        super(RandomWeightCNN,self).__init__(**kwargs)

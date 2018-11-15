@@ -14,7 +14,7 @@ import random
 import argparse
 from comet_ml import Experiment
 import copy
-model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', 'linv_model']
+model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn']
 model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 
 
@@ -51,7 +51,6 @@ def setup_args():
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
     parser.add_argument("--model_name",choices=model_names,default="inv_model")
-    parser.add_argument("--beta",type=float,default=2.0)
     parser.add_argument("--tr_size",type=int,default=10000)
     parser.add_argument("--val_size",type=int,default=1000)
     parser.add_argument("--test_size",type=int,default=1000)
@@ -61,6 +60,7 @@ def setup_args():
     parser.add_argument("--frames_per_trans",type=int,default=2)
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--model_type",type=str,default="classifier")
+    parser.add_argument("--base_enc_name",type=str,default="world_models")
     #parser.add_argument("--eval_mode",type=str,default="infer")
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
@@ -107,8 +107,6 @@ def get_child_dir(args, mode):
     
     
     return child_dir
-
-
 
 def write_to_config_file(dict_,log_dir):
     config_file_path = Path(log_dir) / "config.json"

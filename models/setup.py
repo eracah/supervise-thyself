@@ -2,20 +2,22 @@ import torch
 import sys
 from models.utils import get_weights_path
 from models.base_encoder import Encoder
-from models.inverse_model import InverseModel, LinInverseModel
+from models.inverse_model import InverseModel
 from models.forward_model import ForwardModel
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
-from models.vae import VAE, BetaVAE
+from models.vae import VAE
 from evaluations.eval_models import EvalModel, ForwardEvalModel
 
 
 def setup_model(args, env):
-    model_table = {"inv_model":InverseModel, "vae":VAE, "raw_pixel": RawPixelsEncoder,
-                                 "lin_proj": RandomLinearProjection,
-                                 "rand_cnn": RandomWeightCNN,  "beta_vae": BetaVAE, "linv_model":LinInverseModel}
+    model_table = {"inv_model":InverseModel, "vae":VAE, "rand_cnn": RandomWeightCNN}
 
-    encoder_kwargs = dict(in_ch=3,im_wh=args.resize_to,h_ch=args.hidden_width, embed_len=args.embed_len,  
-                        num_actions=env.action_space.n, beta=args.beta)
+    encoder_kwargs = dict(in_ch=3,
+                          im_wh=args.resize_to,
+                          h_ch=args.hidden_width,
+                          embed_len=args.embed_len,  
+                          num_actions=env.action_space.n,
+                          base_enc_name=args.base_enc_name)
 
     model_name = args.model_name.split("forward_")[-1] 
     base_model = model_table[model_name](**encoder_kwargs).to(args.device)
