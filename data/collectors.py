@@ -41,8 +41,6 @@ class DataCollector(object):
         
     def _collect_datapoint(self,obs):
         x = self.convert_fxn(obs)
-#         x_coord, y_coord, direction = int(self.env.agent_pos[0]), int(self.env.agent_pos[1]), self.env.agent_dir
-#         latent_dict = dict(x_coord=x_coord, y_coord=y_coord, direction=direction)
         latent_dict = self.env.get_latent_dict(self.env)
         return x, latent_dict
 

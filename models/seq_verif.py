@@ -50,3 +50,51 @@ class ShuffleNLearn(nn.Module):
         loss = nn.CrossEntropyLoss()(pred,true)
         return loss, acc
 
+
+if __name__ == "__main__":
+    from torchvision.utils import make_grid
+    %matplotlib inline
+    from matplotlib import pyplot as plt
+
+    tr, val = bufs
+    batch_size = 32
+
+    trans = tr.sample(batch_size)
+
+    xs = trans.xs
+
+    xs.shape
+
+    a,b,c,d,e,f,g,h,i,j = [xs[:,i] for i in range(10)]
+
+    bcd = copy.deepcopy(torch.stack((d,e,f)))
+    bad = copy.deepcopy(torch.stack((d,a,f)))
+    bed = copy.deepcopy(torch.stack((d,j,f)))
+
+    # bcd = copy.deepcopy(torch.stack((b,c,d)))
+    # bad = copy.deepcopy(torch.stack((b,a,d)))
+    # bed = copy.deepcopy(torch.stack((b,e,d)))
+
+    bcdbadbed = torch.stack((bcd,bad,bed))
+
+    bcdbadbed.shape
+
+    probs = torch.tensor([0.5,0.25,0.25])
+
+    inds = torch.multinomial(input=probs, num_samples=batch_size, replacement=True)
+
+    shuffled_batch = torch.stack([bcdbadbed[inds[i],:,i] for i in range(batch_size) ])
+
+    shuffled_batch.shape
+
+    for i,tims in enumerate(shuffled_batch):
+        t = make_grid(tims,3,normalize=True, pad_value=0.2).detach().cpu().numpy()
+        im = t.transpose(1,2,0)
+
+        title = ["bcd","bad", "bed"][inds[i]]
+
+        plt.figure(i)
+
+        plt.title(title)
+
+        plt.imshow(im)
