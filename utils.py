@@ -14,7 +14,7 @@ import random
 import argparse
 from comet_ml import Experiment
 import copy
-model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn']
+model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', "snl"]
 model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 
 

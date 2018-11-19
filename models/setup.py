@@ -4,13 +4,14 @@ from models.utils import get_weights_path
 from models.base_encoder import Encoder
 from models.inverse_model import InverseModel
 from models.forward_model import ForwardModel
+from models.seq_verif import ShuffleNLearn
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from models.vae import VAE
 from evaluations.eval_models import EvalModel, ForwardEvalModel
 
 
 def setup_model(args, env):
-    model_table = {"inv_model":InverseModel, "vae":VAE, "rand_cnn": RandomWeightCNN}
+    model_table = {"inv_model":InverseModel, "vae":VAE, "rand_cnn": RandomWeightCNN, "snl": ShuffleNLearn}
 
     encoder_kwargs = dict(in_ch=3,
                           im_wh=args.resize_to,

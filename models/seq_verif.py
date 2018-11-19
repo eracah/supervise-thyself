@@ -1,15 +1,9 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
 import torch
 from torch import nn
 import torch.functional as F
-
+import copy
 from models.base_encoder import Encoder
-from utils import classification_acc
+from evaluations.utils import classification_acc
 import numpy as np
 
 class InOrderBinaryClassifier(nn.Module):
@@ -32,14 +26,22 @@ class ShuffleNLearn(nn.Module):
         self.bin_clsf = InOrderBinaryClassifier(in_ch=num_frames*self.embed_len)
     
     def forward(self,xs):
-        f = torch.cat([self.encoder(x) for x in xs])
+        f = torch.cat([self.encoder(xs[:,i]) for i in range(xs.shape[1])], dim=1)
         return self.bin_clsf(f)
     
     def shuffle(self,xs):
+        batch_size, num_frames_per_example = xs.shape[0], xs.shape[1]
+        assert xs.shape[1] >= 5
         a,b,c,d,e = [xs[:,i] for i in range(5)]
-        bcd = copy.deepcopy(torch.cat(b,c,d))
-        bad = copy.deepcopy(torch.cat(b,a,d))
-        bed = copy.deepcopy(torch.cat(b,e,d))
+        bcd = copy.deepcopy(torch.stack((b,c,d)))
+        bad = copy.deepcopy(torch.stack((b,a,d)))
+        bed = copy.deepcopy(torch.stack((b,e,d)))
+        bcdbadbed = torch.stack((bcd,bad,bed))
+        probs = torch.tensor([0.5,0.25,0.25])
+        inds = torch.multinomial(input=probs, num_samples=batch_size, replacement=True)
+        shuffled_batch = torch.stack([bcdbadbed[inds[i],:,i] for i in range(batch_size) ])
+        true = (inds < 1).long() #bcd (0) is correct ordering bad and bed  (1,2) are incorrect
+        return shuffled_batch, true
 
         
     def loss_acc(self, trans):
@@ -53,39 +55,12 @@ class ShuffleNLearn(nn.Module):
 
 if __name__ == "__main__":
     from torchvision.utils import make_grid
-    %matplotlib inline
     from matplotlib import pyplot as plt
-
+    snl = ShuffleNLearn()
     tr, val = bufs
     batch_size = 32
 
     trans = tr.sample(batch_size)
-
-    xs = trans.xs
-
-    xs.shape
-
-    a,b,c,d,e,f,g,h,i,j = [xs[:,i] for i in range(10)]
-
-    bcd = copy.deepcopy(torch.stack((d,e,f)))
-    bad = copy.deepcopy(torch.stack((d,a,f)))
-    bed = copy.deepcopy(torch.stack((d,j,f)))
-
-    # bcd = copy.deepcopy(torch.stack((b,c,d)))
-    # bad = copy.deepcopy(torch.stack((b,a,d)))
-    # bed = copy.deepcopy(torch.stack((b,e,d)))
-
-    bcdbadbed = torch.stack((bcd,bad,bed))
-
-    bcdbadbed.shape
-
-    probs = torch.tensor([0.5,0.25,0.25])
-
-    inds = torch.multinomial(input=probs, num_samples=batch_size, replacement=True)
-
-    shuffled_batch = torch.stack([bcdbadbed[inds[i],:,i] for i in range(batch_size) ])
-
-    shuffled_batch.shape
 
     for i,tims in enumerate(shuffled_batch):
         t = make_grid(tims,3,normalize=True, pad_value=0.2).detach().cpu().numpy()

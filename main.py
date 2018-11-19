@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[1]:
@@ -31,8 +31,13 @@ from training.trainer import Trainer
 
 if __name__ == "__main__":
     args = setup_args()
-    args.model_name = "rand_cnn"
-    args.base_enc_name = "world_models"
+#     args.model_name = "snl"
+#     args.base_enc_name = "world_models"
+#     args.mode = "train"
+#     args.env_name = "Catcher-v0"
+#     args.resize_to = (64,64)
+#     args.lr = 0.001
+#     args.frames_per_trans = 5
     
     experiment = setup_exp(args)
     env = setup_env(args)
@@ -54,4 +59,10 @@ if __name__ == "__main__":
         trainer.test(bufs[0])
     else:
         trainer.train(*bufs,model_dir)
+
+
+# In[ ]:
+
+
+
 
