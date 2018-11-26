@@ -5,7 +5,7 @@ import numpy as np
 from evaluations.utils import classification_acc
 
 
-class EvalModel(nn.Module):
+class InferenceEvalModel(nn.Module):
     """feeds embeddings from encoder into linear model for inference or prediction depending on what the inputs to the linear model are"""
     def __init__(self, encoder, num_classes, args):
         super(EvalModel,self).__init__()
@@ -38,21 +38,6 @@ class EvalModel(nn.Module):
         return loss, acc
 
 
-class ForwardEvalModel(EvalModel):
-    def __init__(self, forward_predictor, num_classes, args):
-        super(ForwardEvalModel,self).__init__(forward_predictor, num_classes, args)
-        self.forward_predictor = forward_predictor
-    
-    # only function that changes
-    def get_model_inputs(self,trans):
-        f2_pred = self.forward_predictor(trans)
-        f2_pred = f2_pred.detach()
-        
-
-        # cuz we looking at da future, so the second one
-        y = trans.state_param_dict[self.label_name][:,1]
-        return f2_pred,y
-        
 
 # used for prediction or inference just depends on whether y is the next state and if the embedding    
 class LinearModel(nn.Module):
