@@ -10,11 +10,18 @@ from data import get_state_params
 
 
 
-def setup_env(args):        
+def setup_env(args):   
     env = gym.make(args.env_name)
     env.seed(args.seed) 
     env.num_buckets = args.buckets
     action_space = list(range(env.action_space.n))
+    if "eval" in args.mode or "test" in args.mode:
+        print(args.mode)
+        add_labels_to_env(env)
+
+    return env
+
+def add_labels_to_env(env):
     if hasattr(env.env, "ale"):
         get_latent_dict = get_state_params.atari_get_latent_dict
         nclasses_table = get_state_params.atari_get_nclasses_table(env)
@@ -30,9 +37,6 @@ def setup_env(args):
 
     env.get_latent_dict = get_latent_dict
     env.nclasses_table = nclasses_table
-    return env
-
-
 def convert_frame(obs, resize_to=(-1,-1),to_tensor=False):
     pil_image = Image.fromarray(obs, 'RGB')
     

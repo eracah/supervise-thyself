@@ -23,6 +23,7 @@ def make_empty_transition():
 
 class DataCollector(object):
     def __init__(self, args, policy=None):
+        self.args = args
         self.convert_fxn = partial(convert_frame, resize_to=args.resize_to)
         self.env = setup_env(args)
         self.env.reset()
@@ -41,7 +42,10 @@ class DataCollector(object):
         
     def _collect_datapoint(self,obs):
         x = self.convert_fxn(obs)
-        latent_dict = self.env.get_latent_dict(self.env)
+        if "eval" in self.args.mode or "test" in self.args.mode:
+            latent_dict = self.env.get_latent_dict(self.env)
+        else:
+            latent_dict = {}
         return x, latent_dict
 
     def append_to_trans_ard(self,trans,action,reward, done):

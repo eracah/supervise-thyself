@@ -1,6 +1,6 @@
-from inference_models import EvalModel
+from evaluations.inference_models import InferenceEvalModel
 
-class ForwardEvalModel(EvalModel):
+class ForwardEvalModel(InferenceEvalModel):
     def __init__(self, forward_predictor, num_classes, args):
         super(ForwardEvalModel,self).__init__(forward_predictor, num_classes, args)
         self.forward_predictor = forward_predictor

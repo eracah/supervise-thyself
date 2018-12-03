@@ -4,12 +4,12 @@ import cma
 import gym
 import numpy as np
 
-class ControlModel(nn.Module):
-    def __init__(self,parameters=None,embed_len=32, num_actions=3,  **kwargs):
-        super(C,self).__init__()
-        self.embed_len = embed_len
+class ControlEvalModel(nn.Module):
+    def __init__(self,encoder, parameters=None, num_actions=3,  **kwargs):
+        super(ControlEvalModel,self).__init__()
+        self.encoder = encoder
         self.num_actions = num_actions
-        self.fc = nn.Linear(in_features=embed_len,out_features=num_actions)
+        self.fc = nn.Linear(in_features=encoder.embed_len,out_features=num_actions)
         if parameters is not None:
             weight_len = np.prod(self.fc.weight.size())
             weight = parameters[:weight_len]
@@ -37,7 +37,9 @@ class ControlModel(nn.Module):
         return action
         
     
-    def forward(self,z):
+    def forward(self,x):
+        z = self.encoder(x)
+        z = z.detach()
         z = z.squeeze()
         raw_output = self.fc(z)
         action = self.postprocess_output(raw_output)

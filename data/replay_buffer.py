@@ -13,8 +13,9 @@ class ReplayMemory(object):
     """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample
     or like normal data iterator used in most supervised learning problems with sellf.__iter__()"""
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
-    def __init__(self, capacity=10**6, batch_size=64):
-        self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    def __init__(self,args, capacity=10**6, batch_size=64):
+        self.args = args
+        self.DEVICE = self.args.device #"cuda" if torch.cuda.is_available() else "cpu"
         self.capacity = capacity
         self.batch_size = batch_size
         self.memory = []
@@ -119,7 +120,7 @@ class BufferFiller(object):
         
 
     def make_empty_buffer(self):
-        return ReplayMemory(capacity=self.capacity, batch_size=self.args.batch_size)
+        return ReplayMemory(capacity=self.capacity, batch_size=self.args.batch_size, args=self.args)
     
     def fill(self,size, frames_per_trans=2):
         """fill with transitions by just following a policy"""

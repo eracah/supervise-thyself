@@ -7,7 +7,9 @@ from models.forward_model import ForwardModel
 from models.seq_verif import ShuffleNLearn
 from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from models.vae import VAE
-from evaluations.eval_models import EvalModel, ForwardEvalModel
+from evaluations.inference_models import InferenceEvalModel
+from evaluations.prediction_models import ForwardEvalModel
+from evaluations.control_models import ControlEvalModel
 
 
 def setup_model(args, env):
@@ -43,6 +45,13 @@ def setup_model(args, env):
         
     return model    
 
+def setup_eval_ctl_model(encoder,args,env):
+    eval_model = ControlEvalModel(encoder=encoder,
+                   num_actions=env.action_space.n, args=args).to(args.device)
+    load_weights(eval_model.encoder,args)
+    return eval_model
+    
+
 def setup_test_forward_model(encoder,args,env):
     num_actions = env.action_space.n
     forward_model = ForwardModel(encoder, n_actions=num_actions).to(args.device)
@@ -64,7 +73,7 @@ def setup_eval_forward_model(encoder,args,env):
     
     
 def setup_test_model(encoder,args,env):
-    eval_model = EvalModel(encoder=encoder,
+    eval_model = InferenceEvalModel(encoder=encoder,
                    num_classes=env.nclasses_table[args.label_name], args=args).to(args.device)
     load_weights(eval_model,args)
     return eval_model
@@ -72,7 +81,7 @@ def setup_test_model(encoder,args,env):
 
 
 def setup_eval_model(encoder,args, env):
-    eval_model = EvalModel(encoder=encoder,
+    eval_model = InferenceEvalModel(encoder=encoder,
                    num_classes=env.nclasses_table[args.label_name], args=args).to(args.device)
     load_weights(eval_model.encoder,args)
     return eval_model

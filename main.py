@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # coding: utf-8
 
 # In[1]:
@@ -23,21 +23,20 @@ import time
 from data.tr_val_test_splitter import setup_tr_val_test
 import os
 from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
-from training.trainer import Trainer
-
-
-# In[3]:
-
+from training.inference_trainer import InferenceTrainer
+from training.prediction_trainer import PredictionTrainer
+from training.control_trainer import ControlTrainer
 
 if __name__ == "__main__":
     args = setup_args()
-#     args.model_name = "snl"
+#     args.model_name = "rand_cnn"
 #     args.base_enc_name = "world_models"
-#     args.mode = "train"
-#     args.env_name = "Catcher-v0"
-#     args.resize_to = (64,64)
-#     args.lr = 0.001
+#     args.mode = "eval_ctl"
+#     args.env_name = "Pitfall-v0"
+#     args.resize_to = (128,128)
+#     args.lr = 0.1
 #     args.frames_per_trans = 5
+    #args.tr_size = 1000
     
     experiment = setup_exp(args)
     env = setup_env(args)
@@ -54,15 +53,18 @@ if __name__ == "__main__":
     
     #update params
     experiment.log_multiple_params(args.__dict__)
-    trainer = Trainer(model, args, experiment)
-    if args.mode == "test":
-        trainer.test(bufs[0])
+    
+    if "ctl" in args.mode:
+        trainer = ControlTrainer(model, args, experiment)
+        tr_kwargs = dict(model_dir=model_dir)
+        test_kwargs = {}
     else:
-        trainer.train(*bufs,model_dir)
-
-
-# In[ ]:
-
-
-
+        trainer = InferenceTrainer(model, args, experiment)
+        tr_kwargs = dict(model_dir=model_dir,tr_buf=bufs[0], val_buf=bufs[1])
+        test_kwargs = dict(test_set=bufs[0])
+    
+    if "test" in args.mode:
+        trainer.test(**test_kwargs)
+    else:
+        trainer.train(**tr_kwargs)
 

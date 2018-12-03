@@ -4,16 +4,13 @@ from torch.optim import Adam
 import numpy as np
 from pathlib import Path
 import os
+from training.base_trainer import BaseTrainer
 
-class Trainer(object):
+class InferenceTrainer(BaseTrainer):
     def __init__(self, model, args, experiment):
-        self.model = model
-        self.args = args
-        self.model_name = self.args.model_name
-        self.experiment = experiment
+        super(InferenceTrainer, self).__init__(model, args, experiment)
         self.opt = Adam(params=self.model.parameters(),lr=self.args.lr)
-        self.epoch=0
-        self.max_epochs = 10000
+
 
     def one_iter(self, trans, update_weights=True):
         if update_weights:
@@ -55,28 +52,18 @@ class Trainer(object):
         self.experiment.log_metric("test_acc",test_acc)
         return test_acc
         
-    def train(self, tr_buf, val_buf, model_dir):
-        state_dict = self.model.state_dict()
+    def train(self, model_dir, tr_buf, val_buf):
         val_acc = -np.inf
         best_val_loss = np.inf
         while self.epoch < self.max_epochs:
             self.epoch+=1
             self.model.train()
-            self.experiment.train()
             tr_loss,tr_acc = self.one_epoch(tr_buf,mode="train")
-            state_dict = self.model.encoder.state_dict() if self.args.mode == "train" else self.model.state_dict()
-            torch.save(state_dict, model_dir / "cur_model.pt")
-            
+            self.save_model(self.model, model_dir, "cur_model.pt" )
             self.model.eval()
-            self.experiment.validate()
             val_loss, val_acc = self.one_epoch(val_buf,mode="val")
             
             if self.epoch == 1 or val_loss < best_val_loss:
                 best_val_loss = copy.deepcopy(val_loss)
-                old = [f for f in model_dir.glob("best_model*")]
-                for f in old:
-                    os.remove(str(f))
-                #print("hey")
-                save_path = model_dir / Path(("best_model_%f.pt"%best_val_loss).rstrip('0').rstrip('.'))
-                #print(save_path)
-                torch.save(state_dict,save_path )
+                self.replace_best_model(model_dir)
+                self.save_model(self.model, model_dir, "best_model_%f.pt"%best_val_loss)

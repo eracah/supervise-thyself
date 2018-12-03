@@ -6,7 +6,7 @@ import numpy as np
 def get_weights_path(args, weight_mode=None):
     mode, model_name, test_notebook = args.mode, args.model_name, args.test_notebook
     if weight_mode is None:
-        if mode == "eval" and "forward_" not in model_name or mode == "train_forward":
+        if (mode == "eval" or mode == "eval_ctl") and "forward_" not in model_name or mode == "train_forward":
             weight_mode = "train"
         if mode == "eval" and "forward_" in model_name:
             weight_mode = "train_forward"
