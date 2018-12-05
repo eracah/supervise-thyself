@@ -15,13 +15,14 @@ def setup_env(args):
     env.seed(args.seed) 
     env.num_buckets = args.buckets
     action_space = list(range(env.action_space.n))
+    args.num_actions = env.action_space.n
     if "eval" in args.mode or "test" in args.mode:
         print(args.mode)
-        add_labels_to_env(env)
+        add_labels_to_env(env,args)
 
     return env
 
-def add_labels_to_env(env):
+def add_labels_to_env(env, args):
     if hasattr(env.env, "ale"):
         get_latent_dict = get_state_params.atari_get_latent_dict
         nclasses_table = get_state_params.atari_get_nclasses_table(env)

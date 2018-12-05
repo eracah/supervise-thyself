@@ -5,6 +5,7 @@ from training.base_trainer import BaseTrainer
 from functools import partial
 import copy
 import numpy as np
+from cma import CMAEvolutionStrategy
 
 class ControlTrainer(BaseTrainer):
     def __init__(self, model, args, experiment):
@@ -12,6 +13,8 @@ class ControlTrainer(BaseTrainer):
         self.eval_best_freq = self.args.eval_best_freq
         self.es = self.setup()
         self.model = model
+        self.encoder = self.model.encoder
+        self.args = args
 
 
     def setup(self):
@@ -21,51 +24,54 @@ class ControlTrainer(BaseTrainer):
         #                        num_actions=num_actions)
         num_params = np.prod(self.model.fc.weight.size()) + np.prod(self.model.fc.bias.size())
         param0 = np.random.randn(num_params)
-        es = cma.CMAEvolutionStrategy(param0, sigma0=1,inopts={"popsize":self.args.popsize}) #maximize
+        es = CMAEvolutionStrategy(param0, sigma0=1,inopts={"popsize":self.args.workers + 1}) #maximize
         return es
         
     
     def train(self, model_dir, tr_buf=None,val_buf=None):
-        evaluate = partial(base_evaluate,encoder=self.model.encoder, args=self.args)
+        evaluate = partial(base_evaluate,encoder=self.encoder, args=self.args)
         prev_best = np.inf
         for epoch in range(self.max_epochs):
             params_set, fitnesses = self.es.ask_and_eval(evaluate)
-            es.tell(params_set,fitnesses)
-            best_params, best_fitness, _ = es.best.get()
+            self.es.tell(params_set,fitnesses)
+            best_params, best_fitness, _ = self.es.best.get()
             if best_fitness < prev_best:
-                best_ctlr = ControlEvalModel(best_overall_params)
+                best_ctlr = ctlr = ControlEvalModel(encoder=self.encoder,
+                        num_actions=self.args.num_actions,
+                        parameters=best_params).to(self.args.device)
                 self.save_model(best_ctlr, 
                                 model_dir,
-                                "best_model_%f.pt"% -best_overall_fitness )
+                                "best_model_%f.pt"% -best_fitness )
+                self.experiment.log_metric(-best_fitness,"tr_overall_best")
                 prev_best = copy.deepcopy(best_fitness)
                 
-            best, worst, mean = np.min(fitnesses),\
-                                np.max(fitnesses),\
-                                np.mean(fitnesses)
+            best, worst, mean = -np.min(fitnesses),\
+                                -np.max(fitnesses),\
+                                -np.mean(fitnesses)
             
-            self.experiment.log_metrics(dict(best=-best,
-                                             worst=-worst,
-                                             mean=-mean),
+            self.experiment.log_multiple_metrics(dict(best=best,
+                                             worst=worst,
+                                             mean=mean),
                                         prefix="train",
-                                        step=self.epoch)
+                                        step=epoch)
 
-            if epoch % eval_best_freq == 0:
-                best_avg, best_dist = evaluate(parameters=best_overall_params,
-                                                         rollouts=self.args.val_rollouts,
+            if epoch % self.args.eval_best_freq == 0:
+                best_avg, best_dist = evaluate(parameters=best_params,
                                                         negative_reward=False,dist=True)
-                self.experiment.log_metric(-best_avg,"val_best", step=self.epoch)
+                self.experiment.log_metric(-best_avg,"val_best", step=epoch)
                 
                 
                 
 def base_evaluate(parameters,args, encoder,
                   negative_reward=True, dist=False):
+
+
     ctlr = ControlEvalModel(encoder=encoder,
-                        num_actions=num_actions,
-                        parameters=parameters)
+                        num_actions=args.num_actions,
+                        parameters=parameters).to(args.device)
     solution_rewards = []
     for _ in range(args.rollouts):
         reward_sum = do_rollout(ctlr=ctlr,
-                                encoder=encoder,
                                 args=args)
         if negative_reward: # for cases where the cma-es library minimizes
             reward_sum = - reward_sum
@@ -85,6 +91,8 @@ def do_rollout(ctlr,args):
     while not done:
         x = convert_frame(state,to_tensor=True,
                               resize_to=args.resize_to)
+
+        x = x[None,:]
         
         a = ctlr(x)
         state,reward,done,_ = env.step(a.data)

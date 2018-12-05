@@ -40,7 +40,6 @@ class ControlEvalModel(nn.Module):
     def forward(self,x):
         z = self.encoder(x)
         z = z.detach()
-        z = z.squeeze()
         raw_output = self.fc(z)
         action = self.postprocess_output(raw_output)
 

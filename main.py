@@ -32,7 +32,7 @@ if __name__ == "__main__":
 #     args.model_name = "rand_cnn"
 #     args.base_enc_name = "world_models"
 #     args.mode = "eval_ctl"
-#     args.env_name = "Pitfall-v0"
+#     args.env_name = "WaterWorld-v0"
 #     args.resize_to = (128,128)
 #     args.lr = 0.1
 #     args.frames_per_trans = 5
