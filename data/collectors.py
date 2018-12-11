@@ -6,56 +6,54 @@ from data.utils import convert_frame
 from functools import partial
 from data.utils import setup_env
 
-tuple_fields = ['xs','actions', 'rewards', 'dones', "state_param_dict"]
-
-
-Transition = namedtuple("Transition",tuple(tuple_fields))
-
-
-def make_empty_transition():
-    transition_constructor = Transition
-    num_fields = len(transition_constructor.__dict__["_fields"])
-    trans_list = [[] for _ in range(num_fields -1)]
-    trans_list.append({})
-    trans = transition_constructor(*trans_list)
-    return trans
-    
-
-class DataCollector(object):
+class EpisodeCollector(object):
     def __init__(self, args, policy=None):
+        self.tuple_fields = ['xs']
         self.args = args
+        if args.mode == "test" or args.mode == "test":
+            self.tuple_fields.append("state_param_dict")
+        if args.model_name == "inv_model" or args.model_name == "pred_frames":
+            self.tuple_fields.append("actions")
+            
         self.convert_fxn = partial(convert_frame, resize_to=args.resize_to)
         self.env = setup_env(args)
-        self.env.reset()
-        #to avoid black frame
-        self.env.step(self.env.action_space.n - 1)
-        
+        self.env.reset()        
         if policy:
             self.policy = policy
         else:
             rng = np.random.RandomState(args.seed)
             random_policy = lambda x0: rng.randint(self.env.action_space.n)
             self.policy=random_policy
-        assert args.frames_per_trans >=2, "must have at least an s,a,s triplet"
-        self.frames_per_trans = args.frames_per_trans
 
         
+    def make_empty_transition(self):
+        transition_constructor = self.get_transition_constructor()
+        num_fields = len(transition_constructor.__dict__["_fields"])
+        trans_list = [[] for _ in range(num_fields)]
+        if "state_param_dict" in self.tuple_fields:
+            trans_list[-1] = {}
+        trans = transition_constructor(*trans_list)
+        return trans
+    
+    def get_transition_constructor(self):
+        Transition = namedtuple("Transition",tuple(self.tuple_fields))
+        return Transition
+    
     def _collect_datapoint(self,obs):
         x = self.convert_fxn(obs)
-        if "eval" in self.args.mode or "test" in self.args.mode:
-            latent_dict = self.env.get_latent_dict(self.env)
-        else:
-            latent_dict = {}
-        return x, latent_dict
-
-    def append_to_trans_ard(self,trans,action,reward, done):
-        trans.actions.append(copy.deepcopy(action))
-        trans.rewards.append(copy.deepcopy(reward))
-        trans.dones.append(copy.deepcopy(done))
+        return x
+    
+    def _collect_param_dict(self):
+        param_dict = self.env.get_latent_dict(self.env)
+        return param_dict
         
-    def append_to_trans_state(self,trans,x, latent_dict):
-        trans.xs.append(copy.deepcopy(x))
-        for k,v in latent_dict.items():
+
+    def append_to_trans(self,trans,**kwargs):
+        for k,v in kwargs.items():
+            trans._asdict()[k].append(copy.deepcopy(v))
+        
+    def append_to_trans_param_dict(self,trans, param_dict):
+        for k,v in param_dict.items():
             if k not in trans.state_param_dict:
                 trans.state_param_dict[k] = [copy.deepcopy(v)]
             else:
@@ -63,25 +61,34 @@ class DataCollector(object):
 
         
         
-    def collect_transition_per_the_policy(self):
-        trans = make_empty_transition()
-        
-        #obs, reward, done, _ = self.env.step(env.action_space.sample())
-
+    def collect_episode_per_the_policy(self):
+        trans = self.make_empty_transition()
+        done = False
+        self.env.reset()
         obs = self.env.render("rgb_array")
-        for _ in range(self.frames_per_trans - 1 ):
-            x, latent_dict = self._collect_datapoint(obs)
-            self.append_to_trans_state(trans,x, latent_dict)
+        while not done:
+            x = self._collect_datapoint(obs)
+            if "state param_dict" in self.tuple_fields:
+                param_dict = self._collect_param_dict()
+                self.append_to_trans_param_dict(self,trans, param_dict)
+            self.append_to_trans(trans,xs=x)
     
-            # todo: be able to handle policy being nn that runs on cpu, so we can still collect data with multiprocessing solely on cpu while DEVICE/args.device is still equal to cuda
             action = self.policy(self.convert_fxn(x,to_tensor=False))
             obs, reward, done, _ = self.env.step(action)
             obs = self.env.render("rgb_array")
-            self.append_to_trans_ard(trans,action,reward,done)
+            if "actions" in self.tuple_fields:
+                self.append_to_trans(trans,actions=action)
+            if "rewards" in self.tuple_fields:
+                 self.append_to_trans(trans,rewards=reward)
+                
             
+        x = self._collect_datapoint(obs)
         
-        x, latent_dict = self._collect_datapoint(obs)
-        self.append_to_trans_state(trans,x, latent_dict)
+        if "state param_dict" in self.tuple_fields:
+            param_dict = self._collect_param_dict()
+            self.append_to_trans_param_dict(self,trans, param_dict)
+        
+        self.append_to_trans(trans,xs=x)
         return trans
     
 if __name__ == "__main__":

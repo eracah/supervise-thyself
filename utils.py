@@ -12,13 +12,13 @@ from collections import namedtuple
 from itertools import product
 import random
 import argparse
-from comet_ml import Experiment
 import copy
 model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', "snl"]
 model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 
 
 def setup_exp(args):
+    from comet_ml import Experiment
     exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.model_name, get_hyp_str(args)])
     experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
                             project_name="self-supervised-survey",
@@ -51,6 +51,7 @@ def setup_args():
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
     parser.add_argument("--model_name",choices=model_names,default="inv_model")
+    parser.add_argument("--stride",type=int,default=1)
     parser.add_argument("--tr_size",type=int,default=10000)
     parser.add_argument("--val_size",type=int,default=1000)
     parser.add_argument("--test_size",type=int,default=1000)

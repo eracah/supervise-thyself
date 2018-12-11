@@ -3,46 +3,25 @@ import torch
 import numpy as np
 import random
 from functools import partial
-from data.collectors import Transition, DataCollector
+from data.collectors import EpisodeCollector
 from functools import partial
-from data.iterators import PolicyIterator  #, ListIterator, UnusedPointsIterator
 import copy
 from data.utils import setup_env, convert_frames,convert_frame
 import math
+
 class ReplayMemory(object):
     """buffer of transitions. you can sample it like a true replay buffer (with replacement) using self.sample
     or like normal data iterator used in most supervised learning problems with sellf.__iter__()"""
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
-    def __init__(self,args, capacity=10**6, batch_size=64):
+    def __init__(self,args, batch_size=64):
         self.args = args
-        self.DEVICE = self.args.device #"cuda" if torch.cuda.is_available() else "cpu"
-        self.capacity = capacity
+        self.DEVICE = self.args.device
         self.batch_size = batch_size
-        self.memory = []
-        self.position = 0
-
-        
-
-            
-    # def __add__(self,other_buffer):
-    #     buf = copy.deepcopy(self)
-    #     buf.memory = buf.memory + other_buffer.memory
-    #     del other_buffer
-    #     return buf
-    
-    def extend(self,list_of_other_buffers):
-        for oth_buf in list_of_other_buffers:
-            self.memory = self.memory + oth_buf.memory
-        del list_of_other_buffers
-            
-    
+        self.episodes = []                
    
-    def push(self, *args):
+    def push(self, episode_trans):
         """Saves a transition."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(None)
-        self.memory[self.position] = Transition(*args)
-        self.position = (self.position + 1) % self.capacity
+        self.episodes.append(episode_trans)
 
     
     def sample(self, batch_size=None, chunk_size=None):
@@ -50,8 +29,9 @@ class ReplayMemory(object):
         trans = random.sample(self.memory, batch_size)        
         return self._convert_raw_sample(trans)
     
+    def sample_func(self,ep_ind,frame_ind, num):
+        raise NotImplementedError
     
-            
     def _convert_raw_sample(self,transitions):
         """converts 8-bit RGB to float and pytorch tensor"""
         # puts all trans objects into one trans object
@@ -89,9 +69,6 @@ class ReplayMemory(object):
         batch = Transition(*list(tb_dict.values()))
         return batch
 
-
-
-    
     def __iter__(self):
         """Iterator that samples without replacement for replay buffer
         It's basically like a standard sgd setup
@@ -109,41 +86,31 @@ class ReplayMemory(object):
 
 class BufferFiller(object):
     """creates and fills replay buffers with transitions"""
-    def __init__(self,args,policy=None, capacity=10000):
+    def __init__(self,args,policy=None):
         #self.env = env
         self.args = args
-
-            
-
-        self.capacity = capacity
-
-        
+        self.policy=policy
 
     def make_empty_buffer(self):
-        return ReplayMemory(capacity=self.capacity, batch_size=self.args.batch_size, args=self.args)
+        return ReplayMemory(batch_size=self.args.batch_size, args=self.args)
     
-    def fill(self,size, frames_per_trans=2):
+    def fill(self,size):
         """fill with transitions by just following a policy"""
         buffer = self.make_empty_buffer()
-        iterator = PolicyIterator(args=self.args)
-        buffer = self.fill_using_iterator(buffer,size,iterator)
+        collector = EpisodeCollector(args=self.args,policy=self.policy)
+        buffer = self._fill(size, collector, buffer)
         return buffer 
-
     
-    def fill_using_iterator(self, buffer,size, iterator):
-        """fill using the given transition iterator """
-        
-        global_size=0
-        while global_size < size:
-            for i, transition in enumerate(iterator):
-                buffer.push(*transition)
-                global_size += 1
-                if global_size >= size:
-                    return buffer
-                if global_size % 100 == 0:
-                    print(global_size)
-            iterator.reset()
+    def _fill(self,size, collector, buffer):
+        cur_size = 0
+        while cur_size < size:
+            episode = collector.collect_episode_per_the_policy()
+            cur_size += len(episode.xs)
+            buffer.push(episode)
         return buffer
+        
+
+        
 
 def worker_fill(size,args,index):
     print("worker %i beginning fill!"%index)
@@ -160,26 +127,4 @@ def multicore_fill(size,args):
     buf1 = bufs[0]
     buf1.extend(bufs[1:])
     return buf1
-#     kwargs = {k:v for k,v in args.__dict__.items() if k != "processes" and k!="num_frames"}
     
-#     num_rollouts = math.ceil(args.num_frames / args.rollout_size)
-#     num_rollouts_per_process = math.ceil(num_rollouts / args.processes)
-#     kwargs["num_rollouts"] = num_rollouts_per_process
-#     f = partial(save_dataset,**kwargs)
-#     p.map(f,range(0,num_rollouts,num_rollouts_per_process))
-    
-
-    
-if __name__ is "__main__":
-    env, action_space, grid_size,\
-    num_directions, tot_examples, random_policy = setup_env("MiniGrid-Empty-8x8-v0")
-
-    bf = BufferFiller(env=env,policy=random_policy,)
-
-    rp = bf.fill(128,frames_per_trans=2)
-
-    for t in rp:
-        print(t.state_param_dict["y_coord"].shape)
-        
-    t = rp.sample(20)
-    print(t.state_param_dict["x_coord"].shape)

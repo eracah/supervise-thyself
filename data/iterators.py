@@ -61,6 +61,7 @@ class PolicyIterator(BaseIterator):
     
 
 if __name__ == "__main__":
+    
     env, action_space, grid_size,\
     num_directions, tot_examples, random_policy = setup_env("originalGame-v0")
     pi = PolicyIterator(policy=random_policy, env=env, frames_per_trans=2)
