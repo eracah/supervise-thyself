@@ -58,15 +58,17 @@ def setup_args():
     parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test', "eval_ctl", "test_ctl"], default="train")
     parser.add_argument("--buckets",type=int,default=8)
     parser.add_argument("--label_name",type=str,default="x_coord")
-    parser.add_argument("--frames_per_trans",type=int,default=2)
+    parser.add_argument("--frames_per_example",type=int,default=2)
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--model_type",type=str,default="classifier")
     parser.add_argument("--base_enc_name",type=str,default="world_models")
     parser.add_argument("--rollouts",type=str,default=10)
     parser.add_argument("--val_rollouts",type=str,default=5)
     parser.add_argument("--eval_best_freq",type=int,default=5)
+    parser.add_argument("--no_actions",action="store_true")
     args = parser.parse_args()
     args.resize_to = tuple(args.resize_to)
+    args.there_are_actions = not args.no_actions
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     args.test_notebook = test_notebook

@@ -29,14 +29,13 @@ from training.control_trainer import ControlTrainer
 
 if __name__ == "__main__":
     args = setup_args()
-#     args.model_name = "rand_cnn"
-#     args.base_enc_name = "world_models"
-#     args.mode = "eval_ctl"
-#     args.env_name = "WaterWorld-v0"
-#     args.resize_to = (128,128)
-#     args.lr = 0.1
-#     args.frames_per_trans = 5
-    #args.tr_size = 1000
+    args.model_name = "inv_model"
+    args.base_enc_name = "world_models"
+    args.mode = "train"
+    args.env_name = "Pong-v0"
+    args.resize_to = (128,128)
+    args.lr = 0.1
+    args.frames_per_trans = 5
     
     experiment = setup_exp(args)
     env = setup_env(args)

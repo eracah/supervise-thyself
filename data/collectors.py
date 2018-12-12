@@ -7,15 +7,9 @@ from functools import partial
 from data.utils import setup_env
 
 class EpisodeCollector(object):
-    def __init__(self, args, policy=None):
-        self.tuple_fields = ['xs']
-        self.args = args
-        if args.mode == "test" or args.mode == "test":
-            self.tuple_fields.append("state_param_dict")
-        if args.model_name == "inv_model" or args.model_name == "pred_frames":
-            self.tuple_fields.append("actions")
-            
+    def __init__(self, args, policy=None):            
         self.convert_fxn = partial(convert_frame, resize_to=args.resize_to)
+        self.args = args
         self.env = setup_env(args)
         self.env.reset()        
         if policy:
@@ -27,37 +21,40 @@ class EpisodeCollector(object):
 
         
     def make_empty_transition(self):
-        transition_constructor = self.get_transition_constructor()
-        num_fields = len(transition_constructor.__dict__["_fields"])
+        Transition = self.get_transition_constructor(self.args)
+        num_fields = len(Transition._fields)
         trans_list = [[] for _ in range(num_fields)]
-        if "state_param_dict" in self.tuple_fields:
+        if "state_param_dict" in Transition._fields:
             trans_list[-1] = {}
-        trans = transition_constructor(*trans_list)
+        trans = Transition(*trans_list)
         return trans
     
-    def get_transition_constructor(self):
-        Transition = namedtuple("Transition",tuple(self.tuple_fields))
-        return Transition
-    
-    def _collect_datapoint(self,obs):
-        x = self.convert_fxn(obs)
-        return x
-    
-    def _collect_param_dict(self):
-        param_dict = self.env.get_latent_dict(self.env)
-        return param_dict
+    @classmethod
+    def get_transition_constructor(self, args):
+        tuple_fields = ['xs']
         
+        if args.mode == "eval" or args.mode == "test":
+            tuple_fields.append("state_param_dict")
+        if args.there_are_actions:
+            tuple_fields.append("actions")
+        
+        Transition = namedtuple("Transition",tuple(tuple_fields))
+        return Transition
+               
 
     def append_to_trans(self,trans,**kwargs):
         for k,v in kwargs.items():
-            trans._asdict()[k].append(copy.deepcopy(v))
+            if k in trans._fields:
+                trans._asdict()[k].append(copy.deepcopy(v))
         
-    def append_to_trans_param_dict(self,trans, param_dict):
-        for k,v in param_dict.items():
-            if k not in trans.state_param_dict:
-                trans.state_param_dict[k] = [copy.deepcopy(v)]
-            else:
-                trans.state_param_dict[k].append(copy.deepcopy(v))
+    def append_to_trans_param_dict(self,trans):
+        if "state param_dict" in trans._fields:
+            param_dict = self.env.get_latent_dict(self.env)
+            for k,v in param_dict.items():
+                if k not in trans.state_param_dict:
+                    trans.state_param_dict[k] = [copy.deepcopy(v)]
+                else:
+                    trans.state_param_dict[k].append(copy.deepcopy(v))
 
         
         
@@ -67,27 +64,16 @@ class EpisodeCollector(object):
         self.env.reset()
         obs = self.env.render("rgb_array")
         while not done:
-            x = self._collect_datapoint(obs)
-            if "state param_dict" in self.tuple_fields:
-                param_dict = self._collect_param_dict()
-                self.append_to_trans_param_dict(self,trans, param_dict)
+            x = self.convert_fxn(obs)
+            self.append_to_trans_param_dict(trans)
             self.append_to_trans(trans,xs=x)
-    
             action = self.policy(self.convert_fxn(x,to_tensor=False))
             obs, reward, done, _ = self.env.step(action)
             obs = self.env.render("rgb_array")
-            if "actions" in self.tuple_fields:
-                self.append_to_trans(trans,actions=action)
-            if "rewards" in self.tuple_fields:
-                 self.append_to_trans(trans,rewards=reward)
+            self.append_to_trans(trans, actions=action, rewards=reward)
                 
-            
-        x = self._collect_datapoint(obs)
-        
-        if "state param_dict" in self.tuple_fields:
-            param_dict = self._collect_param_dict()
-            self.append_to_trans_param_dict(self,trans, param_dict)
-        
+        x = self.convert_fxn(obs)
+        self.append_to_trans_param_dict(trans)
         self.append_to_trans(trans,xs=x)
         return trans
     
