@@ -20,7 +20,8 @@ def setup_model(args, env):
                           h_ch=args.hidden_width,
                           embed_len=args.embed_len,  
                           num_actions=env.action_space.n,
-                          base_enc_name=args.base_enc_name)
+                          base_enc_name=args.base_enc_name,
+                         args=args)
 
     model_name = args.model_name.split("forward_")[-1] 
     base_model = model_table[model_name](**encoder_kwargs).to(args.device)
