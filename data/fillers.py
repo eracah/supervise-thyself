@@ -30,8 +30,10 @@ class SamplerFiller(object):
     def _fill(self,size, collector, sampler):
         cur_size = 0
         while cur_size < size:
-            episode = collector.collect_episode_per_the_policy()
-            cur_size += len(episode.xs)
+            num_left = (size - cur_size) #*self.args.frames_per_example
+            episode = collector.collect_episode_per_the_policy(max_frames=num_left)
+            episode_len = len(episode.xs)
+            cur_size += episode_len
             sampler.push(episode)
         return sampler
     

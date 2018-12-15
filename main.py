@@ -1,7 +1,7 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 from comet_ml import Experiment # comet must come before any torch modules. I don't know why?
@@ -29,13 +29,13 @@ from training.control_trainer import ControlTrainer
 
 if __name__ == "__main__":
     args = setup_args()
-    args.model_name = "inv_model"
-    args.base_enc_name = "world_models"
-    args.mode = "train"
-    args.env_name = "Pong-v0"
-    args.resize_to = (128,128)
-    args.lr = 0.1
-    args.frames_per_trans = 5
+#     args.model_name = "snl"
+#     args.base_enc_name = "world_models"
+#     args.mode = "train"
+#     args.env_name = "FlappyBird-v0"
+#     args.lr = 0.0001
+#     args.tr_size = 32
+#     args.frames_per_example = 5
     
     experiment = setup_exp(args)
     env = setup_env(args)
@@ -52,6 +52,7 @@ if __name__ == "__main__":
     
     #update params
     experiment.log_multiple_params(args.__dict__)
+
     
     if "ctl" in args.mode:
         trainer = ControlTrainer(model, args, experiment)
@@ -66,4 +67,10 @@ if __name__ == "__main__":
         trainer.test(**test_kwargs)
     else:
         trainer.train(**tr_kwargs)
+
+
+# In[ ]:
+
+
+
 

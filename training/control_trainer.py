@@ -42,7 +42,9 @@ class ControlTrainer(BaseTrainer):
                 self.save_model(best_ctlr, 
                                 model_dir,
                                 "best_model_%f.pt"% -best_fitness )
+                print("new tr_best: ", -best_fitness)
                 self.experiment.log_metric(-best_fitness,"tr_overall_best")
+                
                 prev_best = copy.deepcopy(best_fitness)
                 
             best, worst, mean = -np.min(fitnesses),\
@@ -58,7 +60,8 @@ class ControlTrainer(BaseTrainer):
             if epoch % self.args.eval_best_freq == 0:
                 best_avg, best_dist = evaluate(parameters=best_params,
                                                         negative_reward=False,dist=True)
-                self.experiment.log_metric(-best_avg,"val_best", step=epoch)
+                print("val_best", best_avg)
+                self.experiment.log_metric(best_avg,"val_best", step=epoch)
                 
                 
                 

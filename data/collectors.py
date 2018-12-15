@@ -24,19 +24,23 @@ class EpisodeCollector(object):
         Transition = self.get_transition_constructor(self.args)
         num_fields = len(Transition._fields)
         trans_list = [[] for _ in range(num_fields)]
-        if "state_param_dict" in Transition._fields:
-            trans_list[-1] = {}
+
         trans = Transition(*trans_list)
+        if "state_param_dict" in Transition._fields:
+            trans._asdict()["state_param_dict"] = {}
         return trans
     
     @classmethod
     def get_transition_constructor(self, args):
         tuple_fields = ['xs']
         
-        if args.mode == "eval" or args.mode == "test":
-            tuple_fields.append("state_param_dict")
+
         if args.there_are_actions:
             tuple_fields.append("actions")
+        
+        # add this last
+        if args.mode == "eval" or args.mode == "test":
+            tuple_fields.append("state_param_dict")
         
         Transition = namedtuple("Transition",tuple(tuple_fields))
         return Transition
@@ -58,11 +62,12 @@ class EpisodeCollector(object):
 
         
         
-    def collect_episode_per_the_policy(self):
+    def collect_episode_per_the_policy(self,max_frames=-1):
         trans = self.make_empty_transition()
         done = False
         self.env.reset()
         obs = self.env.render("rgb_array")
+        frame_count = 0
         while not done:
             x = self.convert_fxn(obs)
             self.append_to_trans_param_dict(trans)
@@ -71,6 +76,9 @@ class EpisodeCollector(object):
             obs, reward, done, _ = self.env.step(action)
             obs = self.env.render("rgb_array")
             self.append_to_trans(trans, actions=action, rewards=reward)
+            frame_count += 1
+            if max_frames is not -1 and frame_count >= max_frames:
+                break
                 
         x = self.convert_fxn(obs)
         self.append_to_trans_param_dict(trans)

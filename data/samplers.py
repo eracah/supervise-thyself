@@ -40,20 +40,24 @@ class DataSampler(object):
 
     
     def get_all_inds(self):
-        if self.all_inds is not None:
+        if self.all_inds is None:
             ep_lens = {i:len(self.episodes[i].xs) for i in  range(self.num_episodes)}
 
            # print([(ep_ind, frame_ind) for frame_ind in range(ep_lens[ep_ind] - self.stride)])
             all_possible_inds = np.concatenate([[(ep_ind, frame_ind) 
                                                 for frame_ind in range(ep_lens[ep_ind] - self.stride)] 
                                                for ep_ind in range(self.num_episodes)])
-            self.all_inds = all_possible_inds
-        return self.all_inds
+            all_inds = all_possible_inds
+        else:
+            all_inds = self.all_inds
+        return all_inds
 
     
     def raw_sample(self, ep_inds, frame_inds):
+        t0 = time.time()
         transitions = [self._sample(ep_ind,frame_ind, self.num_frames, self.stride) for 
                                     ep_ind, frame_ind in zip(ep_inds,frame_inds)]
+        #print("raw sample", time.time() - t0)
         return transitions
         
     
@@ -62,10 +66,12 @@ class DataSampler(object):
         raise NotImplementedError
     
     def _convert_raw_sample(self,transitions):
+        t0 = time.time()
         """converts 8-bit RGB to float and pytorch tensor"""
         # puts all trans objects into one trans object
         trans = self._combine_transitions_into_one_big_one(transitions)
         batch = self._convert_fields_to_pytorch_tensors(trans)
+        #print("convert raw sample", time.time() - t0)
         return batch
         
     def _combine_transitions_into_one_big_one(self,transitions):
@@ -149,7 +155,7 @@ class FrameSampler(DataSampler):
         return trans
     
     
-
+import time
 class FrameActionSampler(DataSampler):
     def __init__(self,args,batch_size):
         super(FrameActionSampler,self).__init__(args, batch_size)
@@ -163,12 +169,14 @@ class FrameActionSampler(DataSampler):
             frame_ind += diff
         frames = []
         actions = []
+        t00 = time.time()
         for _ in range(num - 1):
             frame = ep._asdict()["xs"][frame_ind]
             frames.append(frame)
             action = ep._asdict()["actions"][frame_ind]
             actions.append(action)
             frame_ind += stride
+        #print("the _sample loop", time.time() - t00)
         frame = ep._asdict()["xs"][frame_ind]
         frames.append(frame)
         

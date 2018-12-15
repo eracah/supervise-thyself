@@ -85,7 +85,6 @@ def setup_args():
         args.val_size = 16
         args.resize_to = (128,128)
         args.mode="train"
-        args.model_name = "vae"
 
     return args
 

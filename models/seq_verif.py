@@ -24,6 +24,9 @@ class ShuffleNLearn(nn.Module):
         self.embed_len = embed_len
         self.encoder = Encoder(embed_len = embed_len, **kwargs)
         self.bin_clsf = InOrderBinaryClassifier(in_ch=num_frames*self.embed_len)
+        self.args = kwargs["args"]
+        self.stride = self.args.stride
+        self.num_frames = self.args.frames_per_example
     
     def forward(self,xs):
         f = torch.cat([self.encoder(xs[:,i]) for i in range(xs.shape[1])], dim=1)
@@ -32,7 +35,9 @@ class ShuffleNLearn(nn.Module):
     def shuffle(self,xs):
         batch_size, num_frames_per_example = xs.shape[0], xs.shape[1]
         assert xs.shape[1] >= 5
-        a,b,c,d,e = [xs[:,i] for i in range(5)]
+        ind = torch.linspace(0,xs.shape[1] - 1,steps=5).round().long()
+        x_subsampled = torch.index_select(input=xs,dim=1,index=ind)
+        a,b,c,d,e = [x_subsampled[:,i] for i in range(5)]
         bcd = copy.deepcopy(torch.stack((b,c,d)))
         bad = copy.deepcopy(torch.stack((b,a,d)))
         bed = copy.deepcopy(torch.stack((b,e,d)))
