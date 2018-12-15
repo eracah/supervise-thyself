@@ -1,8 +1,8 @@
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale
 import numpy as np
-from ple import gym_ple
-import gym
+# from ple import gym_ple
+# import gym
 import torch
 from functools import partial
 import math

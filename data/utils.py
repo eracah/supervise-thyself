@@ -1,8 +1,7 @@
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale
 import numpy as np
-from ple import gym_ple
-import gym
+
 import torch
 from functools import partial
 import math
@@ -10,7 +9,10 @@ from data import get_state_params
 
 
 
-def setup_env(args):   
+def setup_env(args): 
+    if args.ple:
+        from ple import gym_ple
+    import gym
     env = gym.make(args.env_name)
     env.seed(args.seed) 
     env.num_buckets = args.buckets
@@ -26,7 +28,7 @@ def add_labels_to_env(env, args):
     if hasattr(env.env, "ale"):
         get_latent_dict = get_state_params.atari_get_latent_dict
         nclasses_table = get_state_params.atari_get_nclasses_table(env)
-    elif args.env_name in ['originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity=v0','noaffordance-v0']:
+    elif args.env_name in ['originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0']:
         get_latent_dict = get_state_params.monster_kong_get_latent_dict
         nclasses_table = get_state_params.monster_kong_get_nclasses_table(env)
     else:

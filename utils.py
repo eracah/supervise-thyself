@@ -67,6 +67,11 @@ def setup_args():
     parser.add_argument("--eval_best_freq",type=int,default=5)
     parser.add_argument("--no_actions",action="store_true")
     args = parser.parse_args()
+    if args.env_name in ["Snake-v0", "FlappyBird-v0", "WaterWorld-v0", 'Catcher-v0', 'originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0']:
+        args.ple =True
+    else:
+        args.ple = False
+    
     args.resize_to = tuple(args.resize_to)
     args.there_are_actions = not args.no_actions
     sys.argv = tmp_argv
