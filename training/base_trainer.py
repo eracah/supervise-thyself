@@ -24,7 +24,8 @@ class BaseTrainer(object):
         raise NotImplementedError
     
     def save_model(self,model, model_dir, name):
-        state_dict = model.encoder.state_dict() if self.args.mode == "train" else model.state_dict()
+        # save as cpu cuz its easy during loading to switch weights from cpu to gpu and not other way around
+        state_dict = model.encoder.cpu().state_dict() if self.args.mode == "train" else model.cpu().state_dict()
         save_path = model_dir / Path((name).rstrip('0').rstrip('.'))
         torch.save(state_dict, save_path )
         

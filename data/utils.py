@@ -5,42 +5,11 @@ import numpy as np
 import torch
 from functools import partial
 import math
-from data import get_state_params
+import numpy as np
+from collections import namedtuple
+import copy
 
-
-
-def setup_env(args): 
-    if args.ple:
-        from ple import gym_ple
-    import gym
-    env = gym.make(args.env_name)
-    env.seed(args.seed) 
-    env.num_buckets = args.buckets
-    action_space = list(range(env.action_space.n))
-    args.num_actions = env.action_space.n
-    if "eval" in args.mode or "test" in args.mode:
-        print(args.mode)
-        add_labels_to_env(env,args)
-
-    return env
-
-def add_labels_to_env(env, args):
-    if hasattr(env.env, "ale"):
-        get_latent_dict = get_state_params.atari_get_latent_dict
-        nclasses_table = get_state_params.atari_get_nclasses_table(env)
-    elif args.env_name in ['originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0']:
-        get_latent_dict = get_state_params.monster_kong_get_latent_dict
-        nclasses_table = get_state_params.monster_kong_get_nclasses_table(env)
-    else:
-        try:
-            get_latent_dict = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_latent_dict")
-            nclasses_table = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_nclasses_table")(env)
-        except:
-            raise NotImplementedError
-
-    env.get_latent_dict = get_latent_dict
-    env.nclasses_table = nclasses_table
-def convert_frame(obs, resize_to=(-1,-1),to_tensor=False):
+def convert_frame(obs, resize_to=(-1,-1),to_tensor=False,device="cpu"):
     pil_image = Image.fromarray(obs, 'RGB')
     
     transforms = [Resize(resize_to)] if resize_to != (-1,-1) else []
@@ -49,8 +18,7 @@ def convert_frame(obs, resize_to=(-1,-1),to_tensor=False):
     transforms = Compose(transforms)
     frame = transforms(pil_image)
     if to_tensor:
-        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-        frame= frame.to(DEVICE)
+        frame= frame.to(device)
     else:
         frame = np.asarray(frame)
 
@@ -58,8 +26,43 @@ def convert_frame(obs, resize_to=(-1,-1),to_tensor=False):
     
     return frame
 
-def convert_frames(frames,resize_to=(64,64),to_tensor=False):
-    convert = partial(convert_frame,resize_to=resize_to,to_tensor=to_tensor)
+def convert_frames(frames,resize_to=(-1,-1),to_tensor=False,device="cpu"):
+    convert = partial(convert_frame,resize_to=resize_to,to_tensor=to_tensor,device=device)
     return torch.stack([convert(frame) for frame in frames])
 
 
+  
+def make_empty_transition( args):
+        Transition = get_transition_constructor(args)
+        trans_list = [[] if k is not "state_param_dict" else {} for k in Transition._fields]
+        trans = Transition(*trans_list)
+        return trans
+
+def get_transition_constructor(args):
+        tuple_fields = ['xs']
+        
+
+        if args.there_are_actions:
+            tuple_fields.append("actions")
+        
+        # add this last
+        if args.mode == "eval" or args.mode == "test":
+            tuple_fields.append("state_param_dict")
+        
+        Transition = namedtuple("Transition",tuple(tuple_fields))
+        return Transition
+               
+
+def append_to_trans(trans,**kwargs):
+        for k,v in kwargs.items():
+            if k in trans._fields:
+                trans._asdict()[k].append(copy.deepcopy(v))
+    
+
+def append_to_trans_param_dict(trans, param_dict):
+        if "state_param_dict" in trans._fields:
+            for k,v in param_dict.items():
+                if k not in trans.state_param_dict:
+                    trans.state_param_dict[k] = [copy.deepcopy(v)]
+                else:
+                    trans.state_param_dict[k].append(copy.deepcopy(v))

@@ -3,9 +3,8 @@ import torch
 import numpy as np
 import random
 from functools import partial
-from data.samplers import FrameActionSampler, FrameSampler
+from data.samplers import DataSampler
 import copy
-from data.utils import setup_env, convert_frames,convert_frame
 import math
 from data.collectors import EpisodeCollector
 
@@ -15,10 +14,9 @@ class SamplerFiller(object):
         #self.env = env
         self.args = args
         self.policy=policy
-        self.Sampler = FrameActionSampler if self.args.there_are_actions else FrameSampler
 
     def make_empty_buffer(self):
-        return self.Sampler(batch_size=self.args.batch_size, args=self.args)
+        return DataSampler(batch_size=self.args.batch_size, args=self.args)
     
     def fill(self,size):
         """fill with transitions by just following a policy"""

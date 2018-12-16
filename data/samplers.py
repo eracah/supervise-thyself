@@ -3,10 +3,10 @@ import torch
 import numpy as np
 import random
 from functools import partial
-from data.collectors import EpisodeCollector
 import copy
-from data.utils import setup_env, convert_frames,convert_frame
+from data.utils import convert_frames
 import math
+from data.utils import make_empty_transition, append_to_trans, append_to_trans_param_dict, get_transition_constructor
 
 class DataSampler(object):
     """buffer of episodes. you can sample it like a true replay buffer (with replacement) using self.sample
@@ -14,7 +14,7 @@ class DataSampler(object):
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
     def __init__(self,args, batch_size=64):
         self.args = args
-        self.Transition = EpisodeCollector.get_transition_constructor(self.args)
+        self.Transition = get_transition_constructor(self.args)
         self.stride = self.args.stride
         self.num_frames = self.args.frames_per_example
         self.DEVICE = self.args.device
@@ -54,24 +54,41 @@ class DataSampler(object):
 
     
     def raw_sample(self, ep_inds, frame_inds):
-        t0 = time.time()
         transitions = [self._sample(ep_ind,frame_ind, self.num_frames, self.stride) for 
                                     ep_ind, frame_ind in zip(ep_inds,frame_inds)]
-        #print("raw sample", time.time() - t0)
         return transitions
         
     
-    
-    def _sample(self,ep_ind,frame_ind, num):
-        raise NotImplementedError
+    def _sample(self,ep_ind,frame_ind, num=1, stride=1):
+        ep = self.episodes[ep_ind]
+        frames_to_go = len(ep.xs)  - frame_ind 
+        frames_covered = num*stride
+        diff = frames_to_go - frames_covered
+        if diff < 0:
+            frame_ind += diff
+            
+        trans = make_empty_transition(self.args)
+        for _ in range(num - 1):
+            frame_kwargs = {k:ep._asdict()[k][frame_ind] for k in ep._asdict().keys() if k is not "state_param_dict" }
+            append_to_trans(trans, **frame_kwargs)
+            if "state_param_dict" in ep._fields:
+                param_dict = {k:ep.state_param_dict[k][frame_ind] for k in ep.state_param_dict.keys()}
+                append_to_trans_param_dict(trans,param_dict)
+            frame_ind += stride
+                              
+                              
+        frame = ep.xs[frame_ind]
+        append_to_trans(trans,xs=frame)
+        if "state_param_dict" in ep._fields:
+                param_dict = {k:ep.state_param_dict[k][frame_ind] for k in ep.state_param_dict.keys()}
+                append_to_trans_param_dict(trans,param_dict)
+        return trans
     
     def _convert_raw_sample(self,transitions):
-        t0 = time.time()
         """converts 8-bit RGB to float and pytorch tensor"""
         # puts all trans objects into one trans object
         trans = self._combine_transitions_into_one_big_one(transitions)
         batch = self._convert_fields_to_pytorch_tensors(trans)
-        #print("convert raw sample", time.time() - t0)
         return batch
         
     def _combine_transitions_into_one_big_one(self,transitions):
@@ -99,9 +116,10 @@ class DataSampler(object):
             for k,v  in trans.state_param_dict.items():
                 tb_dict["state_param_dict"][k] = torch.tensor(v).to(self.DEVICE)
                 
-        
-        tb_dict["xs"] = torch.stack([convert_frames(np.asarray(trans.xs[i]),to_tensor=True,resize_to=(-1,-1)) for
-                                                     i in range(len(trans.xs))]).to(self.DEVICE)
+        convert_fxn = partial(convert_frames, to_tensor=True,device=self.DEVICE)
+                              
+        tb_dict["xs"] = torch.stack([convert_fxn(np.asarray(trans.xs[i])) for
+                                                     i in range(len(trans.xs))]) #.to(self.DEVICE)
         
         if "actions" in tb_dict:
             tb_dict["actions"] = torch.from_numpy(np.asarray(trans.actions)).to(self.DEVICE)
@@ -134,54 +152,7 @@ class DataSampler(object):
     def num_episodes(self):
         return self.__len__()
     
-    
-class FrameSampler(DataSampler):
-    def __init__(self,args,batch_size):
-        super(FrameSampler,self).__init__(args, batch_size)
-    
-    def _sample(self,ep_ind,frame_ind, num=1, stride=1):
-        ep = self.episodes[ep_ind]
-        frames_to_go = len(ep.xs)  - frame_ind 
-        frames_covered = num*stride
-        diff = frames_to_go - frames_covered
-        if diff < 0:
-            frame_ind += diff
-        frames = []
-        for _ in range(num):
-            frame = ep._asdict()["xs"][frame_ind]
-            frames.append(frame)
-            frame_ind += stride
-        trans = self.Transition(xs=frames)
-        return trans
-    
-    
-import time
-class FrameActionSampler(DataSampler):
-    def __init__(self,args,batch_size):
-        super(FrameActionSampler,self).__init__(args, batch_size)
-    
-    def _sample(self,ep_ind,frame_ind, num=1, stride=1):
-        ep = self.episodes[ep_ind]
-        frames_to_go = len(ep.xs)  - frame_ind 
-        frames_covered = num*stride
-        diff = frames_to_go - frames_covered
-        if diff < 0:
-            frame_ind += diff
-        frames = []
-        actions = []
-        t00 = time.time()
-        for _ in range(num - 1):
-            frame = ep._asdict()["xs"][frame_ind]
-            frames.append(frame)
-            action = ep._asdict()["actions"][frame_ind]
-            actions.append(action)
-            frame_ind += stride
-        #print("the _sample loop", time.time() - t00)
-        frame = ep._asdict()["xs"][frame_ind]
-        frames.append(frame)
-        
-        trans = self.Transition(xs=frames,actions=actions)
-        return trans 
+
     
     
 

@@ -1,13 +1,7 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[2]:
-
-
 from comet_ml import Experiment # comet must come before any torch modules. I don't know why?
 import random
 from models.setup import setup_model
-from data.utils import setup_env
+from data.env_utils.env_setup import setup_env
 import argparse
 from evaluations.utils import classification_acc
 import argparse
@@ -20,7 +14,7 @@ from torch.optim import Adam, RMSprop
 import numpy as np
 from pathlib import Path
 import time
-from data.tr_val_test_splitter import setup_tr_val_test
+from data.splitter import setup_tr_val_test
 import os
 from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
 from training.inference_trainer import InferenceTrainer
@@ -43,7 +37,7 @@ if __name__ == "__main__":
     bufs = setup_tr_val_test(args)
     
     # setup models before dirs because some args get changed in this fxn
-    model = setup_model(args, env)
+    model = setup_model(args)
     
 
     model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
@@ -68,8 +62,6 @@ if __name__ == "__main__":
     else:
         trainer.train(**tr_kwargs)
 
-
-# In[ ]:
 
 
 

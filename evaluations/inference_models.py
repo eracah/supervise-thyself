@@ -8,7 +8,7 @@ from evaluations.utils import classification_acc
 class InferenceEvalModel(nn.Module):
     """feeds embeddings from encoder into linear model for inference or prediction depending on what the inputs to the linear model are"""
     def __init__(self, encoder, num_classes, args):
-        super(EvalModel,self).__init__()
+        super(InferenceEvalModel,self).__init__()
         self.encoder = encoder
         self.model_type = args.model_type # classifier or regressor
         self.label_name = args.label_name #y_coord or x_coord or other state variables
