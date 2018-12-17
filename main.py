@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 from comet_ml import Experiment # comet must come before any torch modules. I don't know why?
@@ -32,8 +32,11 @@ if __name__ == "__main__":
     print(args.device)
 #     args.model_name = "tdc"
 #     args.mode = "train"
-#     args.use_comet = False
-#     args.frames_per_example = 10
+    args.use_comet = False
+    args.frames_per_example = 10
+    args.tr_size = 60
+    args.mode = "eval"
+    args.model_name = "forward_rand_cnn"
 #     args.env_name = "Pong-v0"
 #     args.lr = 0.00001
 

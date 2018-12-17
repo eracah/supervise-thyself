@@ -27,32 +27,52 @@ class ForwardModel(nn.Module):
         self.fc = nn.Linear(in_features=self.embed_len + n_actions, out_features=self.embed_len)
         
     def forward(self, trans):
-        a = trans.actions[:,0]
-        a = convert_to1hot(a,self.n_actions).float()
-        x1 = trans.xs[:,0]
         """f1 is embedding of a frame and a is one-hot encoded action"""
-        f1 = self.encoder(x1).detach()
-        #make sure embedding is detached
-        if f1.requires_grad:
-            print("eeek")
-            f1 = f1.detach()
-        inp = torch.cat((f1,a),dim=1)
-        f2_pred = self.fc(inp)
-        return f2_pred
-
-    def loss_acc(self,trans):
-        x2 = trans.xs[:,1]
-        f2 = self.encoder(x2).detach()
-        f2_pred = self.forward(trans)
+        x0 = trans.xs[:,0]
+        f0 = self.encoder(x0).detach()
+        ft = f0
+        f_preds = []
+        # predict n steps forward where n = frames_per_example - 1
+        for t in range(trans.actions.shape[1]):
+            at = trans.actions[:,t]
+            ftp1_pred = self.forward_one_step(ft,at)
+            f_preds.append(ftp1_pred)
+            ft = ftp1_pred
+            
+            
+        f_preds = torch.stack(f_preds,dim=1)
         
-        loss = nn.MSELoss()(f2,f2_pred)
+        return f_preds
+
+    def forward_one_step(self,ft, a):
+
+        a = convert_to1hot(a,self.n_actions).float()
+        #double check make sure embedding is detached
+        if ft.requires_grad:
+            #print("eeek")
+            ft = ft.detach()
+        inp = torch.cat((ft,a),dim=1)
+        ftp1_pred = self.fc(inp)
+        return ftp1_pred
+    
+    def get_f_trues(self,trans):
+        f_trues = [self.encoder(trans.xs[:,i]).detach() 
+                    for i in range(1, trans.actions.shape[1] + 1) ]
+        f_trues = torch.stack(f_trues,dim=1)
+        return f_trues
+        
+    
+    def loss_acc(self,trans):
+        f_preds = self.forward(trans)
+        f_trues = self.get_f_trues(trans)
+       
+        loss = nn.MSELoss()(f_trues,f_preds)
         acc = None # no accuracy
         return loss, acc
             
     @property
     def importance_matrix(self):
         return self.fc.weight.abs().transpose(1,0).data
-    
     
     
     
