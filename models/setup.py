@@ -4,8 +4,9 @@ from models.utils import get_weights_path
 from models.base_encoder import Encoder
 from models.inverse_model import InverseModel
 from models.forward_model import ForwardModel
-from models.seq_verif import ShuffleNLearn
-from models.baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
+from models.tdc import TDC
+from models.shuffle_n_learn import ShuffleNLearn
+from models.random_baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from models.vae import VAE
 from evaluations.inference_models import InferenceEvalModel
 from evaluations.prediction_models import ForwardEvalModel
@@ -13,7 +14,9 @@ from evaluations.prediction_models import ForwardEvalModel
 
 
 def setup_model(args):
-    model_table = {"inv_model":InverseModel, "vae":VAE, "rand_cnn": RandomWeightCNN, "snl": ShuffleNLearn}
+    model_table = {"inv_model":InverseModel, "vae":VAE,
+                   "rand_cnn": RandomWeightCNN, "snl": ShuffleNLearn,
+                   "tdc": TDC}
     
     encoder_kwargs = dict(in_ch=3,
                           im_wh=args.resize_to,
@@ -25,8 +28,9 @@ def setup_model(args):
     
     model_name = args.model_name.split("forward_")[-1] 
     
-    base_model = model_table[model_name](**encoder_kwargs).to(args.device)
     
+
+    base_model = model_table[model_name](**encoder_kwargs).to(args.device)
     encoder = base_model if model_name in ["lin_proj", "raw_pixel", "rand_cnn"] else base_model.encoder
     
     # train (not forward)
@@ -45,7 +49,8 @@ def setup_model(args):
         this_module = sys.modules[__name__]
         setup_fn = getattr(this_module, "setup_" + args.mode + "_model")
         model = setup_fn(encoder,args)
-        
+    
+    
     return model    
 
 def setup_eval_ctl_model(encoder,args):
