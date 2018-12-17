@@ -28,6 +28,8 @@ class BaseTrainer(object):
         state_dict = model.encoder.cpu().state_dict() if self.args.mode == "train" else model.cpu().state_dict()
         save_path = model_dir / Path((name).rstrip('0').rstrip('.'))
         torch.save(state_dict, save_path )
+        # put it back to device
+        model.to(self.args.device)
         
     def replace_best_model(self, model_dir):
         old = [f for f in model_dir.glob("best_model*")]
