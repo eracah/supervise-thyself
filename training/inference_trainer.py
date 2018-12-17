@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import os
 from training.base_trainer import BaseTrainer
-from evaluations.pca_r2_model import PCACorr
+from evaluations.pca_corr_model import PCACorr
 
 class InferenceTrainer(BaseTrainer):
     def __init__(self, model, args, experiment):
@@ -37,13 +37,19 @@ class InferenceTrainer(BaseTrainer):
             print("\t %s"%(self.args.label_name))
         
         avg_loss = np.mean(losses)
-        self.experiment.log_metric(avg_loss, mode + "_loss", step=self.epoch)
+        try:
+            self.experiment.log_metric(avg_loss, mode + "_loss", step=self.epoch)
+        except:
+            pass
         print("\t\tLoss: %8.4f"%(avg_loss))
         if None in accs:
             avg_acc =None
         else:
             avg_acc = np.mean(accs)
-            self.experiment.log_metric(avg_acc, mode + "_acc", step=self.epoch)
+            try:
+                self.experiment.log_metric(avg_acc, mode + "_acc", step=self.epoch)
+            except:
+                pass
             print("\t\tAccuracy: %9.3f%%"%(100*avg_acc))
         return avg_loss, avg_acc
     
@@ -51,11 +57,15 @@ class InferenceTrainer(BaseTrainer):
         pcc = PCACorr(self.model.encoder,test_set)
         r2d, evr = pcc.run()
         print(r2d,evr)
-        self.experiment.log_multiple_metrics(r2d,prefix="r2_score_pc1")
-        self.experiment.log_metric("evr_pc1",evr)
+
         self.model.eval()
         test_loss, test_acc = self.one_epoch(test_set,mode="test")
-        self.experiment.log_metric("test_acc",test_acc)
+        try:
+            self.experiment.log_metric("test_acc",test_acc)
+            self.experiment.log_multiple_metrics(r2d,prefix="r2_score_pc1")
+            self.experiment.log_metric("evr_pc1",evr)
+        except:
+            pass
         return test_acc,r2d,evr
         
     def train(self, model_dir, tr_buf, val_buf):

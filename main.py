@@ -1,3 +1,9 @@
+
+# coding: utf-8
+
+# In[1]:
+
+
 from comet_ml import Experiment # comet must come before any torch modules. I don't know why?
 import random
 from models.setup import setup_model
@@ -19,50 +25,51 @@ import os
 from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
 from training.inference_trainer import InferenceTrainer
 from training.prediction_trainer import PredictionTrainer
-from training.control_trainer import ControlTrainer
+
 
 if __name__ == "__main__":
     args = setup_args()
-#     args.model_name = "snl"
-#     args.base_enc_name = "world_models"
+    print(args.device)
+#     args.model_name = "tdc"
 #     args.mode = "train"
-#     args.env_name = "FlappyBird-v0"
-#     args.lr = 0.0001
-#     args.tr_size = 32
-#     args.frames_per_example = 5
+#     args.use_comet = False
+#     args.frames_per_example = 10
+#     args.env_name = "Pong-v0"
+#     args.lr = 0.00001
+
     
-    experiment = setup_exp(args)
+    experiment, exp_id = setup_exp(args)
     env = setup_env(args)
     print("starting to load buffers")
     bufs = setup_tr_val_test(args)
     
     # setup models before dirs because some args get changed in this fxn
     model = setup_model(args)
-    
 
-    model_dir = setup_dir(basename=".models",args=args,exp_id=experiment.id)
+    model_dir = setup_dir(basename=".models",args=args,exp_id=exp_id)
     print(model_dir)
-    ims_dir = setup_dir(basename=".images",args=args,exp_id=experiment.id)
-    
-    #update params
-    experiment.log_multiple_params(args.__dict__)
+    ims_dir = setup_dir(basename=".images",args=args,exp_id=exp_id)
 
-    
+    #update params
+    try:
+        experiment.log_multiple_params(args.__dict__)
+    except:
+        pass
+
+
     if "ctl" in args.mode:
+        from training.control_trainer import ControlTrainer
         trainer = ControlTrainer(model, args, experiment)
         tr_kwargs = dict(model_dir=model_dir)
         test_kwargs = {}
     else:
         trainer = InferenceTrainer(model, args, experiment)
-        tr_kwargs = dict(model_dir=model_dir,tr_buf=bufs[0], val_buf=bufs[1])
-        test_kwargs = dict(test_set=bufs[0])
-    
+
+
     if "test" in args.mode:
+        test_kwargs = dict(test_set=bufs[0])
         trainer.test(**test_kwargs)
     else:
+        tr_kwargs = dict(model_dir=model_dir,tr_buf=bufs[0], val_buf=bufs[1])
         trainer.train(**tr_kwargs)
-
-
-
-
 

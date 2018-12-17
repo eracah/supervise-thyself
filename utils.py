@@ -13,11 +13,12 @@ from itertools import product
 import random
 import argparse
 import copy
-model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', "snl"]
-model_names = model_names + ["forward_" + model_name for model_name in model_names ]
-
+import uuid
 
 def setup_exp(args):
+    if args.use_comet == False:
+        id = uuid.uuid4().hex
+        return None, id
     from comet_ml import Experiment
     exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.model_name, get_hyp_str(args)])
     experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
@@ -25,7 +26,7 @@ def setup_exp(args):
                             workspace="eracah")
     experiment.set_name(exp_name)
     experiment.log_multiple_params(args.__dict__)
-    return experiment
+    return experiment, experiment.id
 
 
 
@@ -34,6 +35,9 @@ def setup_dir(args,exp_id,basename=".models"):
     dir_.mkdir(exist_ok=True,parents=True)
     return dir_
 
+
+model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', "snl"]
+model_names = model_names + ["forward_" + model_name for model_name in model_names ]
 def setup_args():
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
     tmp_argv = copy.deepcopy(sys.argv)
@@ -42,31 +46,51 @@ def setup_args():
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr", type=float, default=0.00025)
-    parser.add_argument("--env_name",type=str, default="PrivateEye-v0"),
+    
+    #general params
+    parser.add_argument("--env_name",type=str, default="PrivateEye-v0")
     parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
-    parser.add_argument("--batch_size",type=int,default=32)
-    parser.add_argument("--epochs",type=int,default=10000)
-    parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
     parser.add_argument("--model_name",choices=model_names,default="inv_model")
-    parser.add_argument("--stride",type=int,default=1)
+    parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test', "eval_ctl", "test_ctl"], default="train")
+    parser.add_argument("--frames_per_example",type=int,default=2)
+    parser.add_argument("--workers",type=int,default=4)
+    parser.add_argument("--no_actions",action="store_true")
+    parser.add_argument("--base_enc_name",type=str,default="world_models")
+    
+    
+    # inference (non-control) params   
+    parser.add_argument("--lr", type=float, default=0.00025)
+    parser.add_argument("--batch_size",type=int,default=32)
+    parser.add_argument("--epochs",type=int,default=10000)
+    parser.add_argument("--buckets",type=int,default=8)
+    parser.add_argument("--label_name",type=str,default="x_coord")
+    
+    #dataset params
+
     parser.add_argument("--tr_size",type=int,default=10000)
     parser.add_argument("--val_size",type=int,default=1000)
     parser.add_argument("--test_size",type=int,default=1000)
-    parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test', "eval_ctl", "test_ctl"], default="train")
-    parser.add_argument("--buckets",type=int,default=8)
-    parser.add_argument("--label_name",type=str,default="x_coord")
-    parser.add_argument("--frames_per_example",type=int,default=2)
-    parser.add_argument("--workers",type=int,default=4)
+    
+    
+    #unused?
+    parser.add_argument("--stride",type=int,default=1)
+    parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--model_type",type=str,default="classifier")
-    parser.add_argument("--base_enc_name",type=str,default="world_models")
+
+    # embedder specific args
+    parser.add_argument("--num_time_dist_buckets",default=4)
+
+    # control args
     parser.add_argument("--rollouts",type=str,default=10)
     parser.add_argument("--val_rollouts",type=str,default=5)
     parser.add_argument("--eval_best_freq",type=int,default=5)
-    parser.add_argument("--no_actions",action="store_true")
+
+    
     args = parser.parse_args()
+    
+    
     if args.env_name in ["Snake-v0", "FlappyBird-v0", "WaterWorld-v0", 'Catcher-v0', 'originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0']:
         args.ple =True
     else:
@@ -77,6 +101,7 @@ def setup_args():
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     args.test_notebook = test_notebook
+    
     if args.test_notebook:
         args.workers=1
         args.batch_size = 8  
