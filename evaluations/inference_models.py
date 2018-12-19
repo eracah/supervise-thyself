@@ -12,7 +12,7 @@ class InferenceEvalModel(nn.Module):
         self.encoder = encoder
         self.model_type = args.model_type # classifier or regressor
         self.label_name = args.label_name #y_coord or x_coord or other state variables
-        self.model = LinearModel(num_classes=num_classes,
+        self.linear_clsf = LinearModel(num_classes=num_classes,
                                  embed_len=encoder.embed_len,
                                  model_type=self.model_type)
      
@@ -34,7 +34,7 @@ class InferenceEvalModel(nn.Module):
         
     def loss_acc(self,trans):
         embeddings, y = self.get_model_inputs(trans)
-        loss,acc = self.model.loss_acc(embeddings,y)
+        loss,acc = self.linear_clsf.loss_acc(embeddings,y)
         return loss, acc
 
 
