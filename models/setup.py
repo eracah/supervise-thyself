@@ -33,25 +33,33 @@ def setup_model(args):
     base_model = model_table[model_name](**encoder_kwargs).to(args.device)
     encoder = base_model if model_name in ["lin_proj", "raw_pixel", "rand_cnn"] else base_model.encoder
     
-    # train (not forward)
-    if args.mode == "train":
-        model = base_model
-        
-    # eval for forward_models
-    elif args.mode == "eval" and "forward_" in args.model_name:
-        model = setup_eval_forward_model(encoder,args)
-        
-    elif args.mode == "test" and "forward_" in args.model_name:
-        model = setup_test_forward_model(encoder,args)
-    
-    # train_forward, eval (not forward) and test (not forward)
-    else:
-        this_module = sys.modules[__name__]
-        setup_fn = getattr(this_module, "setup_" + args.mode + "_model")
-        model = setup_fn(encoder,args)
-    
-    
+    this_module = sys.modules[__name__]
+    setup_fn = getattr(this_module, "setup_" + args.mode + "_" +  args.task + "_model")
+    model = setup_fn(base_model, encoder, args)
+
     return model    
+
+
+def setup_train_embed_model(base_model, encoder, args):
+    return base_model
+
+def setup_infer_model(base_model,args):
+    encoder = base_model.encoder
+    infer_model = InferenceEvalModel(encoder=encoder,
+                   num_classes=args.nclasses_table[args.label_name], args=args).to(args.device)
+    load_weights(infer_model.encoder, args)
+    return eval_model
+
+
+def setup_infer_from_predict_model(encoder,args):
+    forward_model = ForwardModel(encoder, n_actions=args.num_actions).to(args.device)
+    load_weights(forward_model, args)
+    eval_forward_model = ForwardEvalModel(forward_predictor=forward_model,
+                   num_classes=args.nclasses_table[args.label_name], args=args).to(args.device)
+    #load_weights(eval_forward_model.forward_predictor,args)
+    return eval_forward_model
+
+
 
 def setup_eval_ctl_model(encoder,args):
     from evaluations.control_models import ControlEvalModel
@@ -69,13 +77,7 @@ def setup_test_forward_model(encoder,args):
     return eval_forward_model
     
 
-def setup_eval_forward_model(encoder,args):
-    forward_model = ForwardModel(encoder, n_actions=args.num_actions).to(args.device)
-    load_weights(forward_model, args)
-    eval_forward_model = ForwardEvalModel(forward_predictor=forward_model,
-                   num_classes=args.nclasses_table[args.label_name], args=args).to(args.device)
-    #load_weights(eval_forward_model.forward_predictor,args)
-    return eval_forward_model
+
     
     
     
@@ -87,11 +89,7 @@ def setup_test_model(encoder,args):
     
 
 
-def setup_eval_model(encoder,args):
-    eval_model = InferenceEvalModel(encoder=encoder,
-                   num_classes=args.nclasses_table[args.label_name], args=args).to(args.device)
-    load_weights(eval_model.encoder,args)
-    return eval_model
+
     
 
 
@@ -104,11 +102,6 @@ def setup_train_forward_model(encoder,args):
     return model
     
     
-
-
-# In[38]:
-
-
 def load_weights(model, args):
     """This function changes the state of model or args. They are mutable"""
     weights_path = get_weights_path(args)

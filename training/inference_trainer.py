@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import os
 from training.base_trainer import BaseTrainer
-from evaluations.pca_corr_model import PCACorr
+#from evaluations.pca_corr_model import PCACorr
 
 class InferenceTrainer(BaseTrainer):
     def __init__(self, model, args, experiment):

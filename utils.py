@@ -53,7 +53,8 @@ def setup_args():
     parser.add_argument("--embed_len",type=int,default=32)
     parser.add_argument("--seed",type=int,default=4)
     parser.add_argument("--model_name",choices=model_names,default="inv_model")
-    parser.add_argument('--mode', choices=['train','train_forward', 'eval', 'test', "eval_ctl", "test_ctl"], default="train")
+    parser.add_argument('--mode', choices=['train',"test"], default="train")
+    parser.add_argument("--task", choices=["embed","infer","predict","infer_from_predict", "ctl"])
     parser.add_argument("--frames_per_example",type=int,default=2)
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--no_actions",action="store_true")
@@ -96,6 +97,8 @@ def setup_args():
     else:
         args.ple = False
     
+    
+
     args.resize_to = tuple(args.resize_to)
     args.there_are_actions = not args.no_actions
     sys.argv = tmp_argv
@@ -110,6 +113,12 @@ def setup_args():
         args.val_size = 16
         args.resize_to = (128,128)
         args.mode="train"
+        print(args.device)
+        args.use_comet = False
+        args.frames_per_example = 10
+        args.tr_size = 60
+        args.mode = "eval"
+        args.model_name = "forward_rand_cnn"
 
     return args
 
