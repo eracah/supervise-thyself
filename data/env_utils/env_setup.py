@@ -7,15 +7,22 @@ from data.env_utils import get_state_params
 
 
 def setup_env(args): 
-    if args.ple:
-        from ple import gym_ple
-    import gym
-    env = gym.make(args.env_name)
+    if args.retro:
+        import retro
+        env = retro.make(game=args.env_name, state=args.level)
+        args.num_actions = 126 # 10 actions to pick from you can do from 0 to 4 at once and subtract invalid ones like UP and DOWN together or LEFT and RIGHT together
+    
+    else:
+        if args.ple:
+            from ple import gym_ple
+        import gym
+        env = gym.make(args.env_name)
+        args.num_actions = env.action_space.n
+    
     env.seed(args.seed) 
     env.num_buckets = args.buckets
-    args.num_actions = env.action_space.n
-    if "eval" in args.mode or "test" in args.mode:
-        print(args.mode)
+
+    if args.task == "infer" or (args.mode == "test" and args.task == "predict"):
         add_labels_to_env(env,args)     
         args.nclasses_table = env.nclasses_table
 

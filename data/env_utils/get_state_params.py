@@ -120,6 +120,9 @@ def flappybird_get_latent_dict(env):
 def flappybird_get_nclasses_table(env):
     return dict(y_coord=env.num_buckets)
 
+flappybirdday_get_latent_dict = flappybirdnight_get_latent_dict = flappybird_get_latent_dict
+flappybirdday_get_nclasses_table = flappybirdnight_get_nclasses_table = flappybird_get_nclasses_table
+
 def catcher_get_latent_dict(env):
     h,w = env.env.game_state.game.height, env.env.game_state.game.width
     x_coord = env.env.game_state.game.player.rect.centerx

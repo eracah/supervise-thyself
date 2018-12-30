@@ -1,13 +1,16 @@
-from evaluations.inference_models import InferenceEvalModel
 import torch
 import numpy as np
+from torch import nn
+from evaluations.linear_model import LinearModel
 
-class ForwardEvalModel(InferenceEvalModel):
-    def __init__(self, forward_predictor, num_classes, args):
-        super(ForwardEvalModel,self).__init__(forward_predictor, num_classes, args)
-        self.forward_predictor = forward_predictor
+class PredictEvalModel(nn.Module):
+    def __init__(self, encoder, args):
+        super(PredictEvalModel,self).__init__()
+        self.predictor = LinearModel(num_outputs=embed_len,
+                                 embed_len=encoder.embed_len)
+        self.encoder = encoder
     
-    # only function that changes
+  
     def get_model_inputs(self,trans):
         f_preds = self.forward_predictor(trans)
         f_preds = f_preds.detach()

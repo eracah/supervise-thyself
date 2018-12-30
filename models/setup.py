@@ -9,7 +9,7 @@ from models.shuffle_n_learn import ShuffleNLearn
 from models.random_baselines import RawPixelsEncoder,RandomLinearProjection,RandomWeightCNN
 from models.vae import VAE
 from evaluations.inference_models import InferenceEvalModel
-from evaluations.prediction_models import ForwardEvalModel
+from evaluations.prediction_models import PredictEvalModel
 
 
 
@@ -26,26 +26,29 @@ def setup_model(args):
                           base_enc_name=args.base_enc_name,
                          args=args)
     
-    model_name = args.model_name.split("forward_")[-1] 
-    
     
 
     base_model = model_table[model_name](**encoder_kwargs).to(args.device)
-    encoder = base_model if model_name in ["lin_proj", "raw_pixel", "rand_cnn"] else base_model.encoder
+    encoder = base_model if model_name in ["rand_cnn"] else base_model.encoder
     
     this_module = sys.modules[__name__]
-    setup_fn = getattr(this_module, "setup_" + args.mode + "_" +  args.task + "_model")
+    setup_fn = getattr(this_module, "setup_" + args.task + "_model")
     model = setup_fn(base_model, encoder, args)
 
     return model    
 
 
-def setup_train_embed_model(base_model, encoder, args):
+def setup_embed_model(base_model, encoder, args):
     return base_model
 
-def setup_infer_model(base_model,args):
-    encoder = base_model.encoder
+def setup_infer_model(base_model,encoder,args):
     infer_model = InferenceEvalModel(encoder=encoder,
+                   num_classes=args.nclasses_table[args.label_name], args=args).to(args.device)
+    load_weights(infer_model.encoder, args)
+    return eval_model
+
+def setup_predict_model(base_model,encoder,args):
+    predict_model = PredictEvalModel(encoder=encoder,
                    num_classes=args.nclasses_table[args.label_name], args=args).to(args.device)
     load_weights(infer_model.encoder, args)
     return eval_model

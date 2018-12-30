@@ -14,6 +14,7 @@ import random
 import argparse
 import copy
 import uuid
+import retro
 
 def setup_exp(args):
     if args.use_comet == False:
@@ -36,8 +37,7 @@ def setup_dir(args,exp_id,basename=".models"):
     return dir_
 
 
-model_names = ['inv_model', 'vae', 'raw_pixel', 'lin_proj', 'rand_cnn', "snl"]
-model_names = model_names + ["forward_" + model_name for model_name in model_names ]
+
 def setup_args():
     test_notebook= True if "ipykernel_launcher" in sys.argv[0] else False
     tmp_argv = copy.deepcopy(sys.argv)
@@ -47,18 +47,45 @@ def setup_args():
     parser = argparse.ArgumentParser()
 
     
-    #general params
-    parser.add_argument("--env_name",type=str, default="PrivateEye-v0")
-    parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
+    #env params
+    parser.add_argument("--embed_env",type=str, default="FlappyBirdDay-v0")
+    parser.add_argument("--transfer_env",type=str, default="FlappyBirdDay-v0")
+    parser.add_argument("--test_env",type=str, default="FlappyBirdDay-v0")
+    
+    #level params
+    parser.add_argument("--embed_level",type=str, default="None")
+    parser.add_argument("--transfer_level",type=str, default="None")
+    parser.add_argument("--test_level",type=str, default="None")
+    
+    
+    #mode params
+    parser.add_argument('--mode', choices=["embed","transfer","test"],default="embed")
+    parser.add_argument("--task", choices=["embed","infer","predict","control"], default="embed")
+    
+    
+    #embed params
+    parser.add_argument("--base_enc_name",type=str,default="world_models")
+    embedder_names = ['inv_model', 'vae','rand_cnn',"tdc", "snl"]
+    parser.add_argument("--embedder_name",choices=embedder_names,default="inv_model")
     parser.add_argument("--embed_len",type=int,default=32)
+
+    # embedder specific args
+    parser.add_argument("--num_time_dist_buckets",default=4)
+    
+    
+    
+    #data params
+    parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--model_name",choices=model_names,default="inv_model")
-    parser.add_argument('--mode', choices=['train',"test"], default="train")
-    parser.add_argument("--task", choices=["embed","infer","predict","infer_from_predict", "ctl"])
     parser.add_argument("--frames_per_example",type=int,default=2)
+    parser.add_argument("--tr_size",type=int,default=10000)
+    parser.add_argument("--val_size",type=int,default=1000)
+    parser.add_argument("--test_size",type=int,default=1000)
+    
+    #general params
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--no_actions",action="store_true")
-    parser.add_argument("--base_enc_name",type=str,default="world_models")
+ 
     
     
     # inference (non-control) params   
@@ -67,36 +94,36 @@ def setup_args():
     parser.add_argument("--epochs",type=int,default=10000)
     parser.add_argument("--buckets",type=int,default=8)
     parser.add_argument("--label_name",type=str,default="x_coord")
-    
-    #dataset params
+  
 
-    parser.add_argument("--tr_size",type=int,default=10000)
-    parser.add_argument("--val_size",type=int,default=1000)
-    parser.add_argument("--test_size",type=int,default=1000)
-    
+    # control args
+    parser.add_argument("--rollouts",type=str,default=10)
+    parser.add_argument("--val_rollouts",type=str,default=5)
+    parser.add_argument("--eval_best_freq",type=int,default=5)
     
     #unused?
     parser.add_argument("--stride",type=int,default=1)
     parser.add_argument("--hidden_width",type=int,default=32)
     parser.add_argument("--model_type",type=str,default="classifier")
 
-    # embedder specific args
-    parser.add_argument("--num_time_dist_buckets",default=4)
-
-    # control args
-    parser.add_argument("--rollouts",type=str,default=10)
-    parser.add_argument("--val_rollouts",type=str,default=5)
-    parser.add_argument("--eval_best_freq",type=int,default=5)
-
     
     args = parser.parse_args()
     
     
-    if args.env_name in ["Snake-v0", "FlappyBird-v0", "WaterWorld-v0", 'Catcher-v0', 'originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0']:
+    args.env_name = getattr(args, args.mode + "_env")
+    
+    if args.env_name in ["Snake-v0", "FlappyBird-v0", "WaterWorld-v0", 'Catcher-v0']:
         args.ple =True
     else:
         args.ple = False
-    
+        
+    args.retro = True if args.env_name in retro.data.list_games() else False
+    if args.retro:
+        args.level = getattr(args, args.mode + "_level")
+        assert args.level != "None"
+    else:
+        args.level = "None"
+
     
 
     args.resize_to = tuple(args.resize_to)
