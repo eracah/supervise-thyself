@@ -9,7 +9,6 @@ class BaseTrainer(object):
     def __init__(self, model, args, experiment):
         self.model = model
         self.args = args
-        self.model_name = self.args.model_name
         self.experiment = experiment
         self.epoch=0
         self.max_epochs = 10000

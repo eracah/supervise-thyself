@@ -21,7 +21,7 @@ def setup_exp(args):
         id = uuid.uuid4().hex
         return None, id
     from comet_ml import Experiment
-    exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.model_name, get_hyp_str(args)])
+    exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.embedder_name, get_hyp_str(args)])
     experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
                             project_name="self-supervised-survey",
                             workspace="eracah")
@@ -32,7 +32,7 @@ def setup_exp(args):
 
 
 def setup_dir(args,exp_id,basename=".models"):
-    dir_ = Path(basename) / get_child_dir(args,mode=args.mode) / Path(exp_id)
+    dir_ = Path(basename) / get_child_dir(args,task=args.task) / Path(exp_id)
     dir_.mkdir(exist_ok=True,parents=True)
     return dir_
 
@@ -92,7 +92,7 @@ def setup_args():
     parser.add_argument("--lr", type=float, default=0.00025)
     parser.add_argument("--batch_size",type=int,default=32)
     parser.add_argument("--epochs",type=int,default=10000)
-    parser.add_argument("--buckets",type=int,default=8)
+    parser.add_argument("--buckets",type=int,default=16)
     parser.add_argument("--label_name",type=str,default="x_coord")
   
 
@@ -112,7 +112,7 @@ def setup_args():
     
     args.env_name = getattr(args, args.mode + "_env")
     
-    if args.env_name in ["Snake-v0", "FlappyBird-v0", "WaterWorld-v0", 'Catcher-v0']:
+    if args.env_name in ["Snake-v0", "FlappyBird-v0","FlappyBirdDay-v0","FlappyBirdNight-v0", "WaterWorld-v0", 'Catcher-v0']:
         args.ple =True
     else:
         args.ple = False
@@ -135,22 +135,36 @@ def setup_args():
     if args.test_notebook:
         args.workers=1
         args.batch_size = 8  
-        args.tr_size = 16
-        args.test_size= 8
-        args.val_size = 16
+        args.tr_size = 64
+        args.test_size= 64
+        args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="train"
-        print(args.device)
+        args.mode="test"
+        args.task="infer"
+        args.label_name="y_coord"
         args.use_comet = False
         args.frames_per_example = 10
-        args.tr_size = 60
-        args.mode = "eval"
-        args.model_name = "forward_rand_cnn"
+        
+        
+    assert not (args.mode == "test" and args.task == "embed"), "no testing for embed!"
+    args.needs_labels = True if args.task == "infer" or (args.mode == "test" and args.task == "predict") else False
 
     return args
 
 
+def convert_to1hot(a,n_actions):
+    dims = a.size()
+    batch_size = dims[0]
+    if len(dims) < 2:
+        a = a[:,None]
+    
+    a = a.long()
+    a_1hot = torch.zeros((batch_size,n_actions)).long().to(a.device)
 
+    src = torch.ones_like(a).to(a.device)
+
+    a_1hot = a_1hot.scatter_(dim=1,index=a,src=src)
+    return a_1hot
 
 def get_env_nickname(args):
     env_nickname = args.env_name.split("-")[0]
@@ -159,20 +173,20 @@ def get_env_nickname(args):
 
 def get_hyp_str(args):
     hyp_str = ("lr%f"%args.lr).rstrip('0').rstrip('.')
-    if args.model_name == "beta_vae":
+    if args.embedder_name == "beta_vae":
         hyp_str += ("beta=%f"%args.beta).rstrip('0').rstrip('.')
     return hyp_str 
 
 
-def get_child_dir(args, mode):
+def get_child_dir(args, task):
     env_nn = get_env_nickname(args)
     
-    
-    child_dir = Path(mode)
-    if mode == "eval" or mode == "test":
+    mode = args.mode
+    child_dir = Path(task)
+    if task == "infer":
         child_dir = child_dir / Path(args.label_name)
     
-    child_dir = child_dir / Path(args.model_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + ("" if mode == "test" else get_hyp_str(args) ))
+    child_dir = child_dir / Path(args.embedder_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + ("" if mode == "test" else get_hyp_str(args) ))
     
     
     

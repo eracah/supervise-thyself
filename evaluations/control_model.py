@@ -4,9 +4,9 @@ import cma
 import gym
 import numpy as np
 
-class ControlEvalModel(nn.Module):
+class ControlModel(nn.Module):
     def __init__(self,encoder, parameters=None, num_actions=3,  **kwargs):
-        super(ControlEvalModel,self).__init__()
+        super(ControlModel,self).__init__()
         self.encoder = encoder
         self.num_actions = num_actions
         self.fc = nn.Linear(in_features=encoder.embed_len,out_features=num_actions)

@@ -1,7 +1,8 @@
 import torch
 import copy
-from sklearn.metrics import explained_variance_score, r2_score
+#from sklearn.metrics import explained_variance_score, r2_score
 from sklearn.decomposition import PCA
+from scipy.stats import spearmanr
 
 class PCACorr(object):
     def __init__(self,encoder, sampler,num_components=4):
@@ -32,13 +33,14 @@ class PCACorr(object):
     def run(self):
         f, spd = self.collect_megabatch()
         pcs,evr = self.calc_pcs(f)
-        r2d = self.calc_r2(pcs,spd)
-        return r2d,evr[0]
-        
-    def calc_r2(self,pcs,spd):
-        r2d = {}
+        sp_corr = self.calc_spearman_corr(pcs,spd)
+        return sp_corr,evr[0]
+    
+    def calc_spearman_corr(self,pcs,spd):
+        sp_corr = {}
         for k,v in spd.items():
-            r2d[k] = r2_score(v,pcs[:,0])
-            
-        return r2d
+            sp_corr[k] = spearmanr(v,pcs[:,0])[0]
+        return sp_corr
+        
+
         

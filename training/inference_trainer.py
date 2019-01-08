@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import os
 from training.base_trainer import BaseTrainer
-#from evaluations.pca_corr_model import PCACorr
+from evaluations.pca_corr_model import PCACorr
 
 class InferenceTrainer(BaseTrainer):
     def __init__(self, model, args, experiment):
@@ -55,18 +55,21 @@ class InferenceTrainer(BaseTrainer):
     
     def test(self,test_set):
         pcc = PCACorr(self.model.encoder,test_set)
-        r2d, evr = pcc.run()
-        print(r2d,evr)
+        pearson_corr, evr = pcc.run()
+        
+        print("explained variance ratio: ", evr)
+        for k,v in pearson_corr.items():
+            print("\tpearson corr for pc1 for %s is %1.5f"%(k,v))
 
         self.model.eval()
         test_loss, test_acc = self.one_epoch(test_set,mode="test")
         try:
             self.experiment.log_metric("test_acc",test_acc)
-            self.experiment.log_multiple_metrics(r2d,prefix="r2_score_pc1")
+            self.experiment.log_multiple_metrics(pearson_corr,prefix="pearson_score_pc1")
             self.experiment.log_metric("evr_pc1",evr)
         except:
             pass
-        return test_acc,r2d,evr
+        return test_acc,pearson_corr,evr
         
     def train(self, model_dir, tr_buf, val_buf):
         val_acc = -np.inf

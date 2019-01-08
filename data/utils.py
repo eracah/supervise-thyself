@@ -46,7 +46,7 @@ def get_transition_constructor(args):
             tuple_fields.append("actions")
         
         # add this last
-        if args.mode == "eval" or args.mode == "test":
+        if args.needs_labels:
             tuple_fields.append("state_param_dict")
         
         Transition = namedtuple("Transition",tuple(tuple_fields))

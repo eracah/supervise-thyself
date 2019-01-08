@@ -22,7 +22,7 @@ def setup_env(args):
     env.seed(args.seed) 
     env.num_buckets = args.buckets
 
-    if args.task == "infer" or (args.mode == "test" and args.task == "predict"):
+    if args.needs_labels:
         add_labels_to_env(env,args)     
         args.nclasses_table = env.nclasses_table
 

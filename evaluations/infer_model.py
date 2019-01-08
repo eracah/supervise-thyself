@@ -6,15 +6,15 @@ from evaluations.utils import classification_acc
 from evaluations.linear_model import LinearModel
 
 
-class InferenceEvalModel(nn.Module):
+class InferModel(nn.Module):
     """feeds embeddings from encoder into linear model for inference or prediction depending on what the inputs to the linear model are"""
     def __init__(self, encoder, num_classes, args):
-        super(InferenceEvalModel,self).__init__()
+        super(InferModel,self).__init__()
         self.encoder = encoder
         #self.model_type = args.model_type # classifier or regressor
         self.label_name = args.label_name #y_coord or x_coord or other state variables
-        self.linear_model = LinearModel(num_outputs=num_classes,
-                                 embed_len=encoder.embed_len)
+        self.linear_model = LinearModel(output_len=num_classes,
+                                 input_len=encoder.embed_len)
      
     def forward(self,trans):
         x = trans.xs[:,0]
