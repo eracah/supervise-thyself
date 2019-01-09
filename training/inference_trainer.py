@@ -30,45 +30,28 @@ class InferenceTrainer(BaseTrainer):
             losses.append(loss)
             accs.append(acc)
         
-        if mode == "train":
-            print("Epoch %i: "%self.epoch)
-        print("\t%s"%mode)
-        if self.args.mode == "eval" or self.args.mode == "test":
-            print("\t %s"%(self.args.label_name))
+
         
         avg_loss = np.mean(losses)
-        try:
-            self.experiment.log_metric(avg_loss, mode + "_loss", step=self.epoch)
-        except:
-            pass
-        print("\t\tLoss: %8.4f"%(avg_loss))
-        if None in accs:
-            avg_acc =None
-        else:
-            avg_acc = np.mean(accs)
-            try:
-                self.experiment.log_metric(avg_acc, mode + "_acc", step=self.epoch)
-            except:
-                pass
-            print("\t\tAccuracy: %9.3f%%"%(100*avg_acc))
+        
+        self.log_metric(key = mode + "_loss",value=avg_loss)
+
+#         self.experiment.log_metric(name=mode + "_loss",value=avg_loss, step=self.epoch)
+#         print("\t\tLoss: %8.4f"%(avg_loss))
+        avg_acc = np.mean(accs) if None not in accs else None
+        if avg_acc:
+            self.log_metric(key=mode + "_acc",value=100*avg_acc)
+#             self.experiment.log_metric(name=mode + "_acc",value=avg_acc, step=self.epoch)
+#             print("\t\tAccuracy: %9.3f%%"%(100*avg_acc))
         return avg_loss, avg_acc
     
     def test(self,test_set):
         pcc = PCACorr(self.model.encoder,test_set)
         pearson_corr, evr = pcc.run()
-        
-        print("explained variance ratio: ", evr)
-        for k,v in pearson_corr.items():
-            print("\tpearson corr for pc1 for %s is %1.5f"%(k,v))
-
         self.model.eval()
         test_loss, test_acc = self.one_epoch(test_set,mode="test")
-        try:
-            self.experiment.log_metric("test_acc",test_acc)
-            self.experiment.log_multiple_metrics(pearson_corr,prefix="pearson_score_pc1")
-            self.experiment.log_metric("evr_pc1",evr)
-        except:
-            pass
+        self.log_metric(key="evr_pc1",value=evr)
+        self.log_metric(key="pearson",value=pearson_corr)
         return test_acc,pearson_corr,evr
         
     def train(self, model_dir, tr_buf, val_buf):

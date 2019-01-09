@@ -17,16 +17,20 @@ import uuid
 import retro
 
 def setup_exp(args):
-    if args.use_comet == False:
-        id = uuid.uuid4().hex
-        return None, id
-    from comet_ml import Experiment
-    exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.mode, args.embedder_name, get_hyp_str(args)])
-    experiment = Experiment(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx",
-                            project_name="self-supervised-survey",
+    exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.task, args.mode, args.embedder_name, get_hyp_str(args)])
+    exp_kwargs = dict(project_name="self-supervised-survey",
                             workspace="eracah")
+    if args.comet_mode == "online":
+        from comet_ml import Experiment
+        exp_kwargs.update(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx")
+    elif args.comet_mode == "offline":
+        from comet_ml.offline import OfflineExperiment as Experiment
+        offline_directory = Path(".logs")
+        exp_kwargs.update(offline_directory=str(offline_directory))
+    
+    experiment = Experiment(**exp_kwargs)
     experiment.set_name(exp_name)
-    experiment.log_multiple_params(args.__dict__)
+    experiment.log_parameters (args.__dict__)
     return experiment, experiment.id
 
 
@@ -85,7 +89,7 @@ def setup_args():
     #general params
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--no_actions",action="store_true")
- 
+    parser.add_argument("--comet_mode",type=str, choices=["online", "offline"])
     
     
     # inference (non-control) params   
@@ -139,10 +143,10 @@ def setup_args():
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="test"
-        args.task="infer"
+        args.mode="train"
+        args.task="embed"
         args.label_name="y_coord"
-        args.use_comet = False
+        args.comet_mode = "offline"
         args.frames_per_example = 10
         
         

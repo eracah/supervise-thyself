@@ -12,6 +12,11 @@ class BaseTrainer(object):
         self.experiment = experiment
         self.epoch=0
         self.max_epochs = 10000
+        self.last_epoch_logged = 0
+        
+        print("%s, %s"%(args.mode, args.task))
+        if self.args.needs_labels:
+            print("\t %s"%(self.args.label_name))
 
     def one_iter(self, trans, update_weights=True):
         raise NotImplementedError
@@ -30,6 +35,35 @@ class BaseTrainer(object):
         # put it back to device
         model.to(self.args.device)
         
+    def log_metric(self,key,value):
+        if value is None:
+            return
+        if self.args.mode == "train" and self.last_epoch_logged < self.epoch:
+            print("Epoch %i: "%self.epoch)
+            self.last_epoch_logged = copy.deepcopy(self.epoch)
+            
+            
+        if isinstance(value,dict):
+            self.experiment.log_metrics(dic=value,prefix=key, step=self.epoch)
+            print("\t\t%s: "%(key))
+            for k,v in value.items():
+                if v is None:
+                    continue
+                self.printkv(k,v)
+                
+                
+        else:
+            self.experiment.log_metric(name=key,value=value, step=self.epoch)
+            self.printkv(key,value)
+            
+        
+    def printkv(self,k,v):
+        perc = "%\n" if "acc" in k else ""
+        print("\t\t\t%s: %8.4f%s"%(k,v,perc))
+        
+        
+        
+        
     def replace_best_model(self, model_dir):
         old = [f for f in model_dir.glob("best_model*")]
         for f in old:
@@ -37,3 +71,5 @@ class BaseTrainer(object):
         
     def train(self, tr_buf, val_buf, model_dir):
         raise NotImplementedError
+        
+        

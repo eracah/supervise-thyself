@@ -1,7 +1,7 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 from comet_ml import Experiment # comet must come before any torch modules. I don't know why?
@@ -23,56 +23,60 @@ import time
 from data.splitter import setup_tr_val_test
 import os
 from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
-from training.inference_trainer import InferenceTrainer
-from training.prediction_trainer import PredictionTrainer
 
+
+# In[1]:
+
+
+def setup_all(args):        
+    experiment, exp_id = setup_exp(args)
+    print(exp_id)
+    env = setup_env(args)
+    experiment.log_parameters(args.__dict__)
+    data = setup_tr_val_test(args)
+    model = setup_model(args)
+    model_dir = setup_dir(basename=".models",args=args,exp_id=exp_id)
+    ims_dir = setup_dir(basename=".images",args=args,exp_id=exp_id)
+    return data, model, experiment, model_dir, ims_dir
+    
 
 if __name__ == "__main__":
     args = setup_args()
-    print(args.device)
-#     args.model_name = "tdc"
-#     args.mode = "train"
-    args.use_comet = False
-    args.frames_per_example = 10
-    args.tr_size = 60
-    args.mode = "eval"
-    args.model_name = "forward_rand_cnn"
-#     args.env_name = "Pong-v0"
-#     args.lr = 0.00001
+    print(args.mode,args.task)
+    data, model, experiment, model_dir, ims_dir = setup_all(args)
+   
 
+    if args.task == "embed":
+        from training.embed_trainer import EmbedTrainer
+        trainer = EmbedTrainer(model, args, experiment)
     
-    experiment, exp_id = setup_exp(args)
-    env = setup_env(args)
-    print("starting to load buffers")
-    bufs = setup_tr_val_test(args)
-    
-    # setup models before dirs because some args get changed in this fxn
-    model = setup_model(args)
-
-    model_dir = setup_dir(basename=".models",args=args,exp_id=exp_id)
-    print(model_dir)
-    ims_dir = setup_dir(basename=".images",args=args,exp_id=exp_id)
-
-    #update params
-    try:
-        experiment.log_multiple_params(args.__dict__)
-    except:
-        pass
-
-
-    if "ctl" in args.mode:
+    elif args.task == "infer":
+        from training.inference_trainer import InferenceTrainer
+        trainer = InferenceTrainer(model, args, experiment)
+        
+    elif args.task == "predict":
+        from training.prediction_trainer import PredictionTrainer
+        trainer = PredictionTrainer(model, args, experiment)
+        
+    elif args.task == "control":
         from training.control_trainer import ControlTrainer
         trainer = ControlTrainer(model, args, experiment)
-        tr_kwargs = dict(model_dir=model_dir)
-        test_kwargs = {}
     else:
-        trainer = InferenceTrainer(model, args, experiment)
+        assert False, "no other type of Trainer"
 
-
-    if "test" in args.mode:
-        test_kwargs = dict(test_set=bufs[0])
-        trainer.test(**test_kwargs)
-    else:
-        tr_kwargs = dict(model_dir=model_dir,tr_buf=bufs[0], val_buf=bufs[1])
+    if args.mode == "train":
+        tr, test = data
+        tr_kwargs = dict(model_dir=model_dir,tr_buf=tr, val_buf=test)
         trainer.train(**tr_kwargs)
+        
+    elif args.mode == "test":
+        test, = data
+        test_kwargs = dict(test_set=test)
+        trainer.test(**test_kwargs)
+
+
+# In[ ]:
+
+
+
 
