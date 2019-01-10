@@ -25,17 +25,19 @@ import os
 from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
 
 
-# In[1]:
+# In[ ]:
 
 
 def setup_all(args):        
     experiment, exp_id = setup_exp(args)
     print(exp_id)
-    env = setup_env(args)
+    env=setup_env(args)
+    del env
     experiment.log_parameters(args.__dict__)
     data = setup_tr_val_test(args)
     model = setup_model(args)
     model_dir = setup_dir(basename=".models",args=args,exp_id=exp_id)
+    print("model save_dir: %s"%(str(model_dir)))
     ims_dir = setup_dir(basename=".images",args=args,exp_id=exp_id)
     return data, model, experiment, model_dir, ims_dir
     
@@ -69,7 +71,7 @@ if __name__ == "__main__":
         tr_kwargs = dict(model_dir=model_dir,tr_buf=tr, val_buf=test)
         trainer.train(**tr_kwargs)
         
-    elif args.mode == "test":
+    else:
         test, = data
         test_kwargs = dict(test_set=test)
         trainer.test(**test_kwargs)

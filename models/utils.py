@@ -3,22 +3,28 @@ from utils import get_child_dir
 import copy
 import numpy as np
 
-def get_weights_path(args, weight_mode=None):
-    mode,task, embedder_name, test_notebook = args.mode,args.task, args.embedder_name, args.test_notebook
-
-    weight_mode=None
-
-    assert task != "embed", "No need to load weights for embed"
-
-    if mode == "train":
-        weight_mode = "embed"
-    elif mode == "test":
-        weight_mode = task
+def get_weights_path(args):
+    # load embedding task encoder weights if training and load from weights trained on embed_env
+    if args.regime == "transfer":
+        weights_task = "embed"
+        weights_env_name = args.embed_env
+        weights_level_name = args.embed_level
+    # load current task model weights if testing and load from weights trained on transfer_env
+    elif args.regime == "test":
+        weights_task = args.task
+        weights_env_name = args.transfer_env
+        weights_level_name = args.transfer_level
+        
+    elif args.regime == "embed":
+        assert False, "no need to load weights for embed!"
 
 
     best_loss = np.inf
     weights_path = None
-    base_path = Path(".models") / get_child_dir(args,task=weight_mode).parent
+    base_path = Path(".models") / get_child_dir(args,
+                                                task=weights_task,
+                                                env_name=weights_env_name,
+                                                level=weights_level_name).parent
 
 
     #print(base_path)
@@ -27,7 +33,7 @@ def get_weights_path(args, weight_mode=None):
 
     for hyp_dir in base_path.iterdir():
 
-        if (test_notebook and "nb" not in hyp_dir.name) or (not test_notebook and "nb" in hyp_dir.name):
+        if (args.test_notebook and "nb" not in hyp_dir.name) or (not args.test_notebook and "nb" in hyp_dir.name):
             continue
         for model_dir in hyp_dir.iterdir():
             best_models = list(model_dir.glob("best_model*"))

@@ -5,12 +5,10 @@ import numpy as np
 
 
 def setup_tr_val_test(args):
-    if args.mode == "train":
-        sizes = [args.tr_size,args.val_size]
-    elif args.mode == "test":
+    if args.mode == "test":
         sizes = [args.test_size]
     else:
-        assert False
+        sizes = [args.tr_size,args.val_size]
     t0 = time.time()
     sf = SamplerFiller(args)
     samplers = [sf.fill(size) for size in sizes]

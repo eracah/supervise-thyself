@@ -54,10 +54,10 @@ def setup_predict_model(base_model,encoder,args):
 def load_weights(model, args):
     """This function changes the state of model or args. They are mutable"""
     weights_path = get_weights_path(args)
-    print(weights_path)
     if weights_path:
         model.load_state_dict(torch.load(str(weights_path)))
         args.loaded_weights = True
+        print("model load dir",weights_path)
     else:
         print("No weights available for %s. Using randomly initialized %s"%(args.embedder_name,args.embedder_name))
         args.loaded_weights = False

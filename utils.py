@@ -36,7 +36,7 @@ def setup_exp(args):
 
 
 def setup_dir(args,exp_id,basename=".models"):
-    dir_ = Path(basename) / get_child_dir(args,task=args.task) / Path(exp_id)
+    dir_ = Path(basename) / get_child_dir(args,task=args.task,env_name=args.env_name,level=args.level) / Path(exp_id)
     dir_.mkdir(exist_ok=True,parents=True)
     return dir_
 
@@ -63,7 +63,7 @@ def setup_args():
     
     
     #mode params
-    parser.add_argument('--mode', choices=["embed","transfer","test"],default="embed")
+    parser.add_argument('--mode', choices=["train","test"],default="embed")
     parser.add_argument("--task", choices=["embed","infer","predict","control"], default="embed")
     
     
@@ -112,9 +112,39 @@ def setup_args():
 
     
     args = parser.parse_args()
+    args.test_notebook = test_notebook
+    if args.test_notebook:
+        args.workers=1
+        args.batch_size = 8  
+        args.tr_size = 64
+        args.test_size= 64
+        args.val_size = 48
+        args.resize_to = (128,128)
+        args.mode="train"
+        args.task="predict"
+        args.embed_env="SonicAndKnuckles3-Genesis"
+        args.transfer_env="SonicAndKnuckles3-Genesis"
+        args.transfer_level="CarnivalNightZone.Act1"
+        args.embed_level = "AngelIslandZone.Act1"
+        args.label_name="y_coord"
+        args.comet_mode = "online"
+        args.frames_per_example = 10
     
-    
-    args.env_name = getattr(args, args.mode + "_env")
+    if args.mode == "train":
+        if args.task == "embed":
+            args.regime = "embed"
+        elif args.task in ["predict","infer","control"]:
+            args.regime = "transfer"
+        else:
+            assert False, "what task did you pick???!!  %s"%(args.task)
+    if args.mode == "test":
+        if args.task == "embed":
+            print("no testing  for embed!")
+        else:
+            args.regime = "test"
+            
+            
+    args.env_name = getattr(args, args.regime + "_env")
     
     if args.env_name in ["Snake-v0", "FlappyBird-v0","FlappyBirdDay-v0","FlappyBirdNight-v0", "WaterWorld-v0", 'Catcher-v0']:
         args.ple =True
@@ -123,8 +153,8 @@ def setup_args():
         
     args.retro = True if args.env_name in retro.data.list_games() else False
     if args.retro:
-        args.level = getattr(args, args.mode + "_level")
-        assert args.level != "None"
+        args.level = getattr(args, args.regime + "_level")
+        assert args.level != "None", "must specify a level!"
     else:
         args.level = "None"
 
@@ -134,23 +164,9 @@ def setup_args():
     args.there_are_actions = not args.no_actions
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
-    args.test_notebook = test_notebook
+
     
-    if args.test_notebook:
-        args.workers=1
-        args.batch_size = 8  
-        args.tr_size = 64
-        args.test_size= 64
-        args.val_size = 48
-        args.resize_to = (128,128)
-        args.mode="train"
-        args.task="embed"
-        args.label_name="y_coord"
-        args.comet_mode = "offline"
-        args.frames_per_example = 10
-        
-        
-    assert not (args.mode == "test" and args.task == "embed"), "no testing for embed!"
+
     args.needs_labels = True if args.task == "infer" or (args.mode == "test" and args.task == "predict") else False
 
     return args
@@ -170,10 +186,9 @@ def convert_to1hot(a,n_actions):
     a_1hot = a_1hot.scatter_(dim=1,index=a,src=src)
     return a_1hot
 
-def get_env_nickname(args):
-    env_nickname = args.env_name.split("-")[0]
-    exp_nickname = str(args.resize_to[0]) + env_nickname
-    return exp_nickname
+def get_env_nickname(env_name,level, resize_to):
+    level = "" if level is None else "_" + level
+    return str(resize_to[0]) + env_name.split("-")[0] + level
 
 def get_hyp_str(args):
     hyp_str = ("lr%f"%args.lr).rstrip('0').rstrip('.')
@@ -182,12 +197,12 @@ def get_hyp_str(args):
     return hyp_str 
 
 
-def get_child_dir(args, task):
-    env_nn = get_env_nickname(args)
+def get_child_dir(args, task, env_name, level):
+    env_nn = get_env_nickname(env_name,level, args.resize_to)
     
     mode = args.mode
     child_dir = Path(task)
-    if task == "infer":
+    if task=="infer" or (task == "predict" and mode == "test"):
         child_dir = child_dir / Path(args.label_name)
     
     child_dir = child_dir / Path(args.embedder_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + ("" if mode == "test" else get_hyp_str(args) ))
