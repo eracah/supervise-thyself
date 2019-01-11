@@ -120,12 +120,13 @@ def setup_args():
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="train"
-        args.task="predict"
-        args.embed_env="SonicAndKnuckles3-Genesis"
-        args.transfer_env="SonicAndKnuckles3-Genesis"
-        args.transfer_level="CarnivalNightZone.Act1"
-        args.embed_level = "AngelIslandZone.Act1"
+        args.mode="test"
+        args.task="infer"
+        args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0"
+#         args.embed_env="SonicAndKnuckles3-Genesis"
+#         args.transfer_env="SonicAndKnuckles3-Genesis"
+#         args.transfer_level="CarnivalNightZone.Act1"
+#         args.embed_level = "AngelIslandZone.Act1"
         args.label_name="y_coord"
         args.comet_mode = "online"
         args.frames_per_example = 10

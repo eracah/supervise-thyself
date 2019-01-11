@@ -53,8 +53,9 @@ class BaseTrainer(object):
                 
                 
         else:
-            self.experiment.log_metric(name=key,value=value, step=self.epoch)
             self.printkv(key,value)
+            self.experiment.log_metric(name=key,value=value, step=self.epoch)
+
             
         
     def printkv(self,k,v):
