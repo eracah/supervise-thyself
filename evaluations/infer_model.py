@@ -24,9 +24,6 @@ class InferModel(nn.Module):
         return pred
         
     def get_model_inputs(self,trans):
-
-        
-
         
         return embeddings,y
 

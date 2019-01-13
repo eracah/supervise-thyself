@@ -121,7 +121,7 @@ def setup_args():
         args.val_size = 48
         args.resize_to = (128,128)
         args.mode="test"
-        args.task="infer"
+        args.task="predict"
         args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0"
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"
@@ -129,7 +129,7 @@ def setup_args():
 #         args.embed_level = "AngelIslandZone.Act1"
         args.label_name="y_coord"
         args.comet_mode = "online"
-        args.frames_per_example = 10
+        args.frames_per_example = 5
     
     if args.mode == "train":
         if args.task == "embed":

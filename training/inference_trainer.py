@@ -45,8 +45,8 @@ class InferenceTrainer(BaseTrainer):
             self.log_metric(key=mode + "_acc",value=100*avg_acc)
         return avg_loss, avg_acc
 
-    def do_pca_corr(self,test_set):
-        pcc = PCACorr(self.model.encoder,test_set)
+    def do_pca_corr(self,test_set, encoder):
+        pcc = PCACorr(encoder,test_set)
         pearson_corr, evr = pcc.run()
         self.log_metric(key="evr_pc1",value=evr)
         self.log_metric(key="pearson",value=pearson_corr)
@@ -54,7 +54,7 @@ class InferenceTrainer(BaseTrainer):
     
     def test(self,test_set):
         self.one_epoch(test_set,mode="test")
-        self.do_pca_corr(test_set)
+        self.do_pca_corr(test_set, self.model.encoder)
         superimpose_fmaps(self.model.encoder, test_set, self.experiment)
 
         
@@ -70,3 +70,4 @@ class InferenceTrainer(BaseTrainer):
                 best_val_loss = copy.deepcopy(val_loss)
                 self.replace_best_model(model_dir)
                 self.save_model(self.model, model_dir, "best_model_%f.pt"%best_val_loss)
+                
