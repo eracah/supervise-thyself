@@ -57,7 +57,7 @@ def setup_predict_model(base_model,encoder,args):
     if args.mode == "train": # forward model is randomly initialized here 
         load_weights(predict_model.encoder, args)
     elif args.mode == "test": # forward model is loaded from saved weights
-        load_weights(predict_model.encoder, args)        
+        load_weights(predict_model, args)        
     return predict_model
 
 def load_weights(model, args):
@@ -94,6 +94,7 @@ def get_weights_path(args):
                                                 task=weights_task,
                                                 env_name=weights_env_name,
                                                 level=weights_level_name).parent
+    print("looking for: ", base_path)
 
 
     #print(base_path)

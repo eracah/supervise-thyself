@@ -63,7 +63,7 @@ def setup_args():
     
     
     #mode params
-    parser.add_argument('--mode', choices=["train","test"],default="embed")
+    parser.add_argument('--mode', choices=["train","test"],default="train")
     parser.add_argument("--task", choices=["embed","infer","predict","control"], default="embed")
     
     
@@ -92,7 +92,7 @@ def setup_args():
     #general params
     parser.add_argument("--workers",type=int,default=4)
     parser.add_argument("--no_actions",action="store_true")
-    parser.add_argument("--comet_mode",type=str, choices=["online", "offline"])
+    parser.add_argument("--comet_mode",type=str, choices=["online", "offline"],default="online")
     
     
     # inference (non-control) params   
@@ -222,13 +222,11 @@ def get_hyp_str(args):
 
 def get_child_dir(args, task, env_name, level):
     env_nn = get_env_nickname(env_name,level, args.resize_to)
-    
-    mode = args.mode
     child_dir = Path(task)
-    if task=="infer" or (task == "predict" and mode == "test"):
+    if task=="infer":
         child_dir = child_dir / Path(args.label_name)
     
-    child_dir = child_dir / Path(args.embedder_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + ("" if mode == "test" else get_hyp_str(args) ))
+    child_dir = child_dir / Path(args.embedder_name) / Path(env_nn) / Path(("nb_" if args.test_notebook else "") + get_hyp_str(args))
     
     
     
