@@ -36,7 +36,7 @@ class ShuffleNLearn(nn.Module):
         inds = torch.multinomial(input=probs, num_samples=batch_size, replacement=True)
         shuffled_batch = torch.stack([bcdbadbed[inds[i],:,i] for i in range(batch_size) ])
         
-        device = self.encoder.fc.weight.device.type
+        device = self.args.device  #encoder.fc.weight.device.type
         true = (inds < 1).long().to(device) #bcd (0) is correct ordering bad and bed  (1,2) are incorrect
         return shuffled_batch, true
 

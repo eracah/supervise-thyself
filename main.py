@@ -25,7 +25,7 @@ import os
 from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
 
 
-# In[2]:
+# In[ ]:
 
 
 def setup_all(args):        
@@ -75,4 +75,10 @@ if __name__ == "__main__":
         test, = data
         test_kwargs = dict(test_set=test)
         trainer.test(**test_kwargs)
+
+
+# In[ ]:
+
+
+
 

@@ -75,16 +75,19 @@ def setup_args():
 
     # embedder specific args
     parser.add_argument("--num_time_dist_buckets",default=4)
+    parser.add_argument("--seq_tasks_num_frames",default=10)
     
     
     
     #data params
     parser.add_argument("--resize_to",type=int, nargs=2, default=[128, 128])
     parser.add_argument("--seed",type=int,default=4)
-    parser.add_argument("--frames_per_example",type=int,default=2)
+    parser.add_argument("--frames_per_example",type=int)
     parser.add_argument("--tr_size",type=int,default=10000)
     parser.add_argument("--val_size",type=int,default=1000)
     parser.add_argument("--test_size",type=int,default=1000)
+    parser.add_argument("--there_are_actions",type=bool,default=False)
+    parser.add_argument("--there_are_rewards",type=bool,default=False)
     
     #general params
     parser.add_argument("--workers",type=int,default=4)
@@ -99,6 +102,9 @@ def setup_args():
     parser.add_argument("--buckets",type=int,default=16)
     parser.add_argument("--label_name",type=str,default="x_coord")
   
+
+    # prediction parameters
+    parser.add_argument("--pred_num_params", type=int, default=10)
 
     # control args
     parser.add_argument("--rollouts",type=str,default=10)
@@ -121,19 +127,21 @@ def setup_args():
         args.val_size = 48
         args.resize_to = (128,128)
         args.mode="test"
-        args.task="predict"
-        args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0"
+        args.task="infer"
+        args.embedder_name = "snl"
+        args.embed_env=args.transfer_env=args.test_env="Pitfall-v0"
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_level="CarnivalNightZone.Act1"
 #         args.embed_level = "AngelIslandZone.Act1"
-        args.label_name="y_coord"
+        args.label_name="x_coord"
         args.comet_mode = "online"
-        args.frames_per_example = 5
+
     
     if args.mode == "train":
         if args.task == "embed":
             args.regime = "embed"
+            assert args.embedder_name != "rand_cnn", "Random CNN needs no training!"
         elif args.task in ["predict","infer","control"]:
             args.regime = "transfer"
         else:
@@ -162,14 +170,28 @@ def setup_args():
     
 
     args.resize_to = tuple(args.resize_to)
-    args.there_are_actions = not args.no_actions
     sys.argv = tmp_argv
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     
 
     args.needs_labels = True if args.task == "infer" or (args.mode == "test" and args.task == "predict") else False
-
+    if args.task == "infer":
+        args.frames_per_example = 1
+    if args.task == "predict":
+        args.frames_per_example = args.pred_num_params
+        args.there_are_actions = True
+        
+    if args.task == "embed":
+        if args.embedder_name in ['vae','rand_cnn']:
+            args.frames_per_example = 1
+        elif args.embedder_name == "inv_model":
+            args.frames_per_example = 2
+            args.there_are_actions = True
+        elif args.embedder_name in ["snl", "tdc"]:
+            args.frames_per_example = args.seq_tasks_num_frames
+    
+    print("num_frames_per_example",args.frames_per_example)
     return args
 
 

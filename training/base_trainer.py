@@ -13,10 +13,11 @@ class BaseTrainer(object):
         self.epoch=0
         self.max_epochs = 10000
         self.last_epoch_logged = 0
+        self.label_name = self.args.label_name
         
         print("%s, %s"%(args.mode, args.task))
         if self.args.needs_labels:
-            print("\t %s"%(self.args.label_name))
+            print("\t %s"%(self.label_name))
 
     def one_iter(self, trans, update_weights=True):
         raise NotImplementedError
@@ -71,6 +72,9 @@ class BaseTrainer(object):
             os.remove(str(f))
         
     def train(self, tr_buf, val_buf, model_dir):
+        raise NotImplementedError
+        
+    def collect_embeddings_megabatch(self,test_set, encoder):
         raise NotImplementedError
         
         

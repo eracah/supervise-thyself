@@ -12,6 +12,7 @@ class DataSampler(object):
     """buffer of episodes. you can sample it like a true replay buffer (with replacement) using self.sample
     or like normal data iterator used in most supervised learning problems with sellf.__iter__()"""
     """Memory is uint8 to save space, then when you sample it converts to float tensor"""
+    """Note no matter what the frames_per_example is, each frame ind (except the ones)"""
     def __init__(self,args, batch_size=64):
         self.args = args
         self.Transition = get_transition_constructor(self.args)
@@ -45,7 +46,8 @@ class DataSampler(object):
 
            # print([(ep_ind, frame_ind) for frame_ind in range(ep_lens[ep_ind] - self.stride)])
             all_possible_inds = np.concatenate([[(ep_ind, frame_ind) 
-                                                for frame_ind in range(ep_lens[ep_ind] - self.stride)] 
+                                                # if the sample is k consecutive frames then we can only use frame indices that at most k frames from the end of the episode
+                                               for frame_ind in range(ep_lens[ep_ind] - self.num_frames  + 1 )] 
                                                for ep_ind in range(self.num_episodes)])
             all_inds = all_possible_inds
         else:
@@ -60,12 +62,13 @@ class DataSampler(object):
         
     
     def _sample(self,ep_ind,frame_ind, num=1, stride=1):
+        """given an episode index, take that episode and starting at the frame_indth frame, sample frames from
+        range(frame_ind, num, stride)""" 
         ep = self.episodes[ep_ind]
-        frames_to_go = len(ep.xs)  - frame_ind 
-        frames_covered = num*stride
-        diff = frames_to_go - frames_covered
-        if diff < 0:
-            frame_ind += diff
+        frames_until_end = len(ep.xs)  - frame_ind 
+        frames_needed_from_start_ind = num*stride
+        if frames_until_end < frames_needed_from_start_ind:
+            assert False, "end of episode reached and we didn't get all da frames yet!"
             
         trans = make_empty_transition(self.args)
         for _ in range(num - 1):
@@ -120,7 +123,7 @@ class DataSampler(object):
                               
         tb_dict["xs"] = torch.stack([convert_fxn(np.asarray(trans.xs[i])) for
                                                      i in range(len(trans.xs))]) #.to(self.DEVICE)
-        
+
         if "actions" in tb_dict:
             tb_dict["actions"] = torch.from_numpy(np.asarray(trans.actions)).to(self.DEVICE)
         if "rewards" in tb_dict:

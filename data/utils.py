@@ -44,6 +44,10 @@ def get_transition_constructor(args):
 
         if args.there_are_actions:
             tuple_fields.append("actions")
+            
+        if args.there_are_rewards:
+            tuple_fields.append("rewards")
+            
         
         # add this last
         if args.needs_labels:

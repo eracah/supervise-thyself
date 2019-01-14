@@ -40,6 +40,7 @@ def setup_model(args):
 
 
 def setup_embed_model(base_model, encoder, args):
+    assert args.embedder_name != "rand_cnn", "Random CNN needs no training!"
     return base_model
 
 def setup_infer_model(base_model,encoder,args):

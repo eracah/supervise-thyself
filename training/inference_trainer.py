@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 import os
 from training.base_trainer import BaseTrainer
-from evaluations.pca_corr_model import PCACorr
+from evaluations.pca_corr_model import compute_pca_corr
 from evaluations.fmap_superimpose import superimpose_fmaps
 
 class InferenceTrainer(BaseTrainer):
@@ -46,10 +46,11 @@ class InferenceTrainer(BaseTrainer):
         return avg_loss, avg_acc
 
     def do_pca_corr(self,test_set, encoder):
-        pcc = PCACorr(encoder,test_set)
-        pearson_corr, evr = pcc.run()
-        self.log_metric(key="evr_pc1",value=evr)
-        self.log_metric(key="pearson",value=pearson_corr)
+        all_fs, all_ys = self.collect_embeddings_megabatch(test_set, encoder)
+        sp_corr, evr = compute_pca_corr(embeddings=all_fs, labels=all_ys)
+        
+        self.log_metric(key="evr",value=evr)
+        self.log_metric(key="spearman_corr",value=sp_corr)
         
     
     def test(self,test_set):
@@ -70,4 +71,19 @@ class InferenceTrainer(BaseTrainer):
                 best_val_loss = copy.deepcopy(val_loss)
                 self.replace_best_model(model_dir)
                 self.save_model(self.model, model_dir, "best_model_%f.pt"%best_val_loss)
+                
+    def collect_embeddings_megabatch(self,test_set, encoder):
+        fs = []
+        ys = []
+        for trans in test_set:
+            x1 = trans.xs[:,0]
+            f = encoder(x1)
+            fs.append(f)
+
+            y = trans.state_param_dict[self.label_name]
+            ys.append(copy.deepcopy(y[:,0]))
+
+        f = torch.cat(fs)
+        y = torch.cat(ys).squeeze()
+        return f.detach(), y
                 
