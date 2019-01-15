@@ -14,7 +14,7 @@ import random
 import argparse
 import copy
 import uuid
-import retro
+#import retro
 
 def setup_exp(args):
     exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.task, args.mode, args.embedder_name, get_hyp_str(args)])
@@ -161,8 +161,10 @@ def setup_args():
         args.ple =True
     else:
         args.ple = False
-        
-    args.retro = True if args.env_name in retro.data.list_games() else False
+    
+    
+    args.retro = True if "sonic" in args.env_name.lower() else False
+        args.retro = True
     if args.retro:
         args.level = getattr(args, args.regime + "_level")
         assert args.level != "None", "must specify a level!"
