@@ -49,7 +49,9 @@ def setup_args():
         sys.argv = [""]
     
     parser = argparse.ArgumentParser()
-
+    
+    
+    parser.add_argument("--small_scale", action="store_true")
     
     #env params
     parser.add_argument("--embed_env",type=str, default="FlappyBirdDay-v0")
@@ -192,6 +194,13 @@ def setup_args():
             args.frames_per_example = args.seq_tasks_num_frames
     
     print("num_frames_per_example",args.frames_per_example)
+    if args.small_scale:
+        args.batch_size = 8  
+        args.tr_size = 64
+        args.test_size= 32
+        args.val_size = 32
+        
+    
     return args
 
 
