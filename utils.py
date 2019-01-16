@@ -164,7 +164,6 @@ def setup_args():
     
     
     args.retro = True if "sonic" in args.env_name.lower() else False
-        args.retro = True
     if args.retro:
         args.level = getattr(args, args.regime + "_level")
         assert args.level != "None", "must specify a level!"
