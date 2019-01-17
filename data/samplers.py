@@ -43,12 +43,13 @@ class DataSampler(object):
     def get_all_inds(self):
         if self.all_inds is None:
             ep_lens = {i:len(self.episodes[i].xs) for i in  range(self.num_episodes)}
-
+            #print
            # print([(ep_ind, frame_ind) for frame_ind in range(ep_lens[ep_ind] - self.stride)])
-            all_possible_inds = np.concatenate([[(ep_ind, frame_ind) 
+
                                                 # if the sample is k consecutive frames then we can only use frame indices that at most k frames from the end of the episode
-                                               for frame_ind in range(ep_lens[ep_ind] - self.num_frames  + 1 )] 
-                                               for ep_ind in range(self.num_episodes)])
+            list_of_inds = [[(ep_ind, frame_ind) for frame_ind in range(ep_lens[ep_ind] - self.num_frames  + 1 )] for ep_ind in range(self.num_episodes)]
+            list_of_inds = [list_ for list_ in list_of_inds if len(list_) > 0]
+            all_possible_inds = np.concatenate(list_of_inds)
             all_inds = all_possible_inds
         else:
             all_inds = self.all_inds
