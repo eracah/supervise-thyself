@@ -157,7 +157,7 @@ def setup_args():
             
     args.env_name = getattr(args, args.regime + "_env")
     
-    if args.env_name in ["Snake-v0", "FlappyBird-v0","FlappyBirdDay-v0","FlappyBirdNight-v0", "WaterWorld-v0", 'Catcher-v0']:
+    if args.env_name in ["Snake-v0", "FlappyBird-v0","FlappyBirdDay-v0","FlappyBirdNight-v0", "WaterWorld-v0", 'Catcher-v0','originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0 ']:
         args.ple =True
     else:
         args.ple = False
