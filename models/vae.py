@@ -9,38 +9,29 @@ class Decoder(nn.Module):
         super(Decoder,self).__init__()
         self.enc_dict =  dict(encoder.named_modules())
         self.lsh = encoder.last_im_shape
-        layers = self.setup_decoder_layers(encoder)
-        self.decoder = nn.Sequential(*layers)
-        
-        enc_fc = self.enc_dict["fc"]
-        self.fc =  nn.Linear(in_features=enc_fc.out_features,
-                            out_features=enc_fc.in_features)
+        self.osh = encoder.enc_out_shape
+        self.decoder = self.setup_decoder()        
+        self.fc =  nn.Linear(in_features=32,
+                            out_features=self.osh)
 
 
-    def setup_decoder_layers(self,encoder):
-        bias = encoder.bias
+    def setup_decoder(self):
+        decoder = nn.Sequential(
+                    nn.ConvTranspose2d(in_channels=256,out_channels=128, kernel_size=4, stride=2, padding=1),
+                    nn.ReLU(),
+                    nn.ConvTranspose2d(in_channels=128,out_channels=64, kernel_size=4, stride=2, padding=1),
+                    nn.ReLU(),
+                    nn.ConvTranspose2d(in_channels=64,out_channels=32, kernel_size=4, stride=2, padding=1),
+                    nn.ReLU(),
+                    nn.ConvTranspose2d(in_channels=32,out_channels=3, kernel_size=4, stride=2, padding=1),
+                )
+        return decoder
 
-        enc_list = [self.enc_dict[key] for key in self.enc_dict.keys() if "encoder." in key ]
-        enc_list.reverse()
-        layers = []
-        for lay in enc_list:
-            if "Conv" in str(lay):
-                layer = nn.ConvTranspose2d(in_channels=lay.out_channels,
-                                           out_channels=lay.in_channels,
-                                           kernel_size=lay.kernel_size,
-                                           stride=lay.stride,
-                                           padding=lay.padding,
-                                           bias=bias,
-                                           output_padding=1)
-            else:
-                layer = copy.deepcopy(lay)
-            layers.append(layer)
-        return layers
-        
     def forward(self,h):
         ht = self.fc(h)
         
         h_im = ht.view(-1, *self.lsh)
+        
         im = self.decoder(h_im)
         return im       
         

@@ -128,9 +128,9 @@ def setup_args():
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="test"
-        args.task="infer"
-        args.embedder_name = "snl"
+        args.mode="train"
+        args.task="embed"
+        args.embedder_name = "vae"
         args.embed_env=args.transfer_env=args.test_env="Pitfall-v0"
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"
