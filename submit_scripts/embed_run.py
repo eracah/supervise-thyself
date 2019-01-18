@@ -4,8 +4,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-games = ["originalGame-v0"]#["FlappyBirdDay-v0"]#, "originalGame-v0"]#,"PrivateEye-v0"
-encoders = ["vae","inv_model","tdc","snl"]
+games = ["PrivateEye-v0"]#["FlappyBirdDay-v0"]#, "originalGame-v0"]#,"PrivateEye-v0"
+encoders = ["tdc","snl","vae","inv_model" ] #"vae","inv_model",
 lrs = [0.001]
 main_file = "main.py"
 mode= "train"

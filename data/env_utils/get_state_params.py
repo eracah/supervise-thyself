@@ -20,6 +20,17 @@ def bucket_coord(coord, num_buckets, max_coord, min_coord=0):
     return bucketed_coord
 
 
+def lunarlander_get_latent_dict(env):
+    x,y = env.env.lander.position
+    x_coord = bucket_coord(coord=x, num_buckets=env.num_buckets, max_coord=20.5)
+    y_coord = bucket_coord(coord=y, num_buckets=env.num_buckets, max_coord=13.7)
+    latent_dict = dict(x_coord=x_coord,y_coord=y_coord)
+    return latent_dict
+
+def lunarlander_get_nclasses_table(env):
+    return dict(x_coord=env.num_buckets,
+                y_coord=env.num_buckets)
+
 def atari_get_latent_dict(env):
     env_name = env.env.spec.id
     ram = env.env.ale.getRAM()

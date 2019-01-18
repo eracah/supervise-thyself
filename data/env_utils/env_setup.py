@@ -70,8 +70,8 @@ def add_labels_to_env(env, args):
         nclasses_table = get_state_params.monster_kong_get_nclasses_table(env)
     else:
         try:
-            get_latent_dict = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_latent_dict")
-            nclasses_table = getattr(get_state_params,env.spec.id.strip("-v0").lower() + "_get_nclasses_table")(env)
+            get_latent_dict = getattr(get_state_params,env.spec.id.split("-v")[0].lower() + "_get_latent_dict")
+            nclasses_table = getattr(get_state_params,env.spec.id.split("-v")[0].lower() + "_get_nclasses_table")(env)
         except:
             raise NotImplementedError
 

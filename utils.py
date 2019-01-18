@@ -124,19 +124,19 @@ def setup_args():
     if args.test_notebook:
         args.workers=1
         args.batch_size = 8  
-        args.tr_size = 512
+        args.tr_size = 64
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
         args.mode="train"
-        args.task="embed"
+        args.task="infer"
         args.embedder_name = "tdc"
-        args.embed_env=args.transfer_env=args.test_env="originalGame-v0"
+        args.embed_env=args.transfer_env=args.test_env="LunarLander-v2"
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_level="CarnivalNightZone.Act1"
 #         args.embed_level = "AngelIslandZone.Act1"
-        args.label_name="x_coord"
+        args.label_name="y_coord"
         args.comet_mode = "online"
 
     
