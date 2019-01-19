@@ -12,13 +12,28 @@ def bucket_coord(coord, num_buckets, max_coord, min_coord=0):
         assert (coord < max_coord and coord >= min_coord)
     except:
         print("coord: %i, max: %i, min: %i, num_buckets: %i"%(coord, max_coord, min_coord,num_buckets))
-        assert False
+        assert False, coord
         #coord = 0
     coord_range = (max_coord - min_coord) + 1
     thresh =  coord_range/num_buckets
     bucketed_coord =  np.floor((coord - min_coord) /thresh)
     return bucketed_coord
 
+
+def sonic_get_latent_dict(env):
+    
+    y = env.env.data.lookup_value("y")
+    screen_y = env.env.data.lookup_value("screen_y")
+    x = env.env.data.lookup_value("x")
+    screen_x = env.env.data.lookup_value("screen_x")
+    x_coord = bucket_coord(x - screen_x,env.num_buckets,200)
+    y_coord = bucket_coord(y - screen_y,env.num_buckets,220)
+    latent_dict = dict(x_coord=x_coord,y_coord=y_coord)
+    return latent_dict
+
+def sonic_get_nclasses_table(env):
+    return dict(x_coord=env.num_buckets,
+                y_coord=env.num_buckets)
 
 def lunarlander_get_latent_dict(env):
     x,y = env.env.lander.position

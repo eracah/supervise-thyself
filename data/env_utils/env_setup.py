@@ -14,8 +14,8 @@ class SonicDiscretizer(gym.ActionWrapper):
     def __init__(self, env):
         super(SonicDiscretizer, self).__init__(env)
         buttons = ["B", "A", "MODE", "START", "UP", "DOWN", "LEFT", "RIGHT", "C", "Y", "X", "Z"]
-        actions = [['LEFT'], ['RIGHT'], ['LEFT', 'DOWN'], ['RIGHT', 'DOWN'], ['DOWN'],
-                   ['DOWN', 'B'], ['B']]
+        actions = [['DOWN', 'B'], ["RIGHT"]]
+        #[['LEFT'], ['RIGHT'], ['LEFT', 'DOWN'], ['RIGHT', 'DOWN'], ['DOWN'],['DOWN', 'B'], ['B']]
         self._actions = []
         for action in actions:
             arr = np.array([False] * 12)
@@ -65,6 +65,11 @@ def add_labels_to_env(env, args):
     if hasattr(env.env, "ale"):
         get_latent_dict = get_state_params.atari_get_latent_dict
         nclasses_table = get_state_params.atari_get_nclasses_table(env)
+    
+    elif "sonic" in args.env_name.lower():
+        get_latent_dict = get_state_params.sonic_get_latent_dict
+        nclasses_table = get_state_params.sonic_get_nclasses_table(env)
+        
     elif args.env_name in ['originalGame-v0','nosemantics-v0','noobject-v0','nosimilarity-v0','noaffordance-v0']:
         get_latent_dict = get_state_params.monster_kong_get_latent_dict
         nclasses_table = get_state_params.monster_kong_get_nclasses_table(env)
