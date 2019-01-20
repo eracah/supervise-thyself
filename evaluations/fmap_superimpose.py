@@ -24,3 +24,5 @@ def superimpose_fmaps(encoder, test_set, experiment):
         im2 = plt.imshow(fm_grid, cmap=plt.cm.jet, alpha=0.7)
 
         experiment.log_figure(figure_name="it%i_ind%i"%(i,ind),figure=fig)
+        if i > 8:
+            break
