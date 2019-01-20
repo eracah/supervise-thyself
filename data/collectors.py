@@ -14,10 +14,7 @@ class EpisodeCollector(object):
         self.env.reset()        
 
         self.policy = policy
-#         else:
-#             rng = np.random.RandomState(args.seed)
-#             random_policy = lambda x0: rng.randint(self.env.action_space.n)
-#             self.policy=random_policy
+
        
     def collect_episode_per_the_policy(self,max_frames=-1):
         trans = make_empty_transition(self.args)
@@ -36,13 +33,6 @@ class EpisodeCollector(object):
             else:
                 action = self.env.action_space.sample()
 
-
-#             if hasattr(self.env,"sonicify_action"):
-#                 sonic_action = self.env.sonicify_action(action)
-#                 sonic_action = sonic_action.astype("int")
-#                 print(sonic_action)
-#                 obs, reward, done, _ = self.env.step(sonic_action)
-#             else:
             obs, reward, done, _ = self.env.step(action)
             obs = self.env.render("rgb_array")
             append_to_trans(trans, actions=action, rewards=reward)
