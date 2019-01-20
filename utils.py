@@ -131,13 +131,13 @@ def setup_args():
         args.mode="train"
         args.task="infer"
         args.embedder_name = "tdc"
-        args.embed_env=args.transfer_env=args.test_env="SonicTheHedgehog-Genesis"
-        args.embed_level=args.transfer_level=args.test_level='GreenHillZone.Act1'
+        args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0" #"SonicTheHedgehog-Genesis"
+        args.embed_level=args.transfer_level=args.test_level= None #'GreenHillZone.Act1'
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_level="CarnivalNightZone.Act1"
 #         args.embed_level = "AngelIslandZone.Act1"
-        args.label_name="x_coord"
+        args.label_name="pipe_x_coord"
         args.comet_mode = "online"
 
     

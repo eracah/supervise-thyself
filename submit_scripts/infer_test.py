@@ -7,7 +7,7 @@ from pathlib import Path
 embed_env = "FlappyBirdDay-v0"
 transfer_env = "FlappyBirdDay-v0"
 test_envs = ["FlappyBirdDay-v0", "FlappyBirdNight-v0"]
-test_levels = [None, None]
+test_levels = [None]
 embed_level = None
 transfer_level = None
 encoders =  ["tdc","vae","inv_model"]
