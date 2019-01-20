@@ -140,11 +140,23 @@ def snake_get_nclasses_table(env):
 def flappybird_get_latent_dict(env):
     y_coord = env.env.game_state.game.player.pos_y
     y_coord = bucket_coord(y_coord,env.num_buckets,env.env.game_state.game.height)
-    latent_dict = dict(y_coord=y_coord)
+    max_pipe_dist = 305
+    x_pipes = [env.env.game_state.game.pipe_group.sprites()[i].x for i in range(3)]
+    min_x = min(x_pipes)
+    ind_x = x_pipes.index(min_x)
+    if min_x < 0:
+        ind_x += 1
+    x_pipe = x_pipes[ind_x]
+    if x_pipe > max_pipe_dist:
+        x_pipe = 0
+
+        
+    pipe_x_coord = bucket_coord(x_pipe, env.num_buckets,max_pipe_dist)
+    latent_dict = dict(y_coord=y_coord, pipe_x_coord=pipe_x_coord)
     return latent_dict
 
 def flappybird_get_nclasses_table(env):
-    return dict(y_coord=env.num_buckets)
+    return dict(y_coord=env.num_buckets,pipe_x_coord=env.num_buckets)
 
 flappybirdday_get_latent_dict = flappybirdnight_get_latent_dict = flappybird_get_latent_dict
 flappybirdday_get_nclasses_table = flappybirdnight_get_nclasses_table = flappybird_get_nclasses_table
