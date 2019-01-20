@@ -12,7 +12,7 @@ embed_level = None
 transfer_level = None
 encoders =  ["tdc","vae","inv_model"]
 lrs = [0.001]
-labels=["y_coord"]
+labels=["pipe_x_coord"]
 main_file = "main.py"
 mode= "test"
 task="infer"
@@ -30,7 +30,7 @@ for test_env in test_envs:
                     else:
                         script = "./submit_scripts/run_cpu.sl"
                     args = ["sbatch",
-                            "-w %s"%("kepler2"),
+                            "-w %s"%("leto16"),
                             script,
                             "%s"%(main_file),
                             "--embedder_name %s"%enc,

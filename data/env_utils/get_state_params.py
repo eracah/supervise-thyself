@@ -145,7 +145,8 @@ def flappybird_get_latent_dict(env):
     min_x = min(x_pipes)
     ind_x = x_pipes.index(min_x)
     if min_x < 0:
-        ind_x += 1
+        ind_x = (ind_x + 1) % 3
+    assert ind_x < 3, "whoa whoa %i, %i, %i" %(x_pipes[0],x_pipes[1], x_pipes[2])
     x_pipe = x_pipes[ind_x]
     if x_pipe > max_pipe_dist:
         x_pipe = 0

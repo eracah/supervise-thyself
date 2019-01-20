@@ -124,7 +124,7 @@ def setup_args():
     if args.test_notebook:
         args.workers=1
         args.batch_size = 8  
-        args.tr_size = 64
+        args.tr_size = 5000
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
