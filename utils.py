@@ -19,7 +19,7 @@ import uuid
 def setup_exp(args):
     exp_name = ("nb_" if args.test_notebook else "") + "_".join([args.task, args.mode, args.embedder_name, get_hyp_str(args)])
     exp_kwargs = dict(project_name="self-supervised-survey",
-                            workspace="eracah")
+                            workspace="REDACTED")
     if args.comet_mode == "online":
         from comet_ml import Experiment
         exp_kwargs.update(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx")
