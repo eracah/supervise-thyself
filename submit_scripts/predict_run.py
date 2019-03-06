@@ -4,9 +4,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-games = ["FlappyBirdDay-v0"]
-levels=[None]#["FlappyBirdDay-v0"]#, "originalGame-v0"]#,"PrivateEye-v0"
-encoders =  ["rand_cnn","tdc","vae","inv_model"]
+#games = ["FlappyBirdDay-v0"]
+games = ["SonicTheHedgehog-Genesis"]
+levels=['GreenHillZone.Act1']#["FlappyBirdDay-v0"]#, "originalGame-v0"]#,"PrivateEye-v0"
+encoders =  ["snl","vae","inv_model","tdc","rand_cnn"]
 lrs = [0.001]
 labels=["y_coord"]
 main_file = "main.py"
@@ -14,7 +15,7 @@ mode= "train"
 task="predict"
 comet_mode = "online"
 seed = 4
-nodes = ["leto28","leto31","kepler2","leto20"]
+nodes = ["eos15","kepler2", "leto02","leto34","mila01"]
 node_dict = dict(zip(encoders,nodes))
 for game in games:
     for level in levels:

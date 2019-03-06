@@ -54,8 +54,8 @@ class InferenceTrainer(BaseTrainer):
         
     
     def test(self,test_set):
-        self.one_epoch(test_set,mode="test")
         self.do_pca_corr(test_set, self.model.encoder)
+        self.one_epoch(test_set,mode="test")        
         superimpose_fmaps(self.model.encoder, test_set, self.experiment)
 
         

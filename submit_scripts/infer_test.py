@@ -6,22 +6,28 @@ import sys
 from pathlib import Path
 embed_env = "FlappyBirdDay-v0"
 transfer_env = "FlappyBirdDay-v0"
-test_envs = ["FlappyBirdDay-v0", "FlappyBirdNight-v0"]
+test_envs = ["FlappyBirdNight-v0"]
 test_levels = [None]
 embed_level = None
 transfer_level = None
-encoders =  ["tdc","vae","inv_model"]
+# embed_env = "SonicTheHedgehog-Genesis"
+# transfer_env = "SonicTheHedgehog-Genesis"
+# embed_level = 'GreenHillZone.Act1'
+# transfer_level = 'GreenHillZone.Act1'
+# test_envs = ["SonicTheHedgehog-Genesis"]
+# test_levels = ['GreenHillZone.Act1', 'GreenHillZone.Act2']#,"LabyrinthZone.Act1"]
+encoders =  ["rand_cnn"]
 lrs = [0.001]
-labels=["pipe_x_coord"]
+labels=["y_coord"]
 main_file = "main.py"
 mode= "test"
 task="infer"
 comet_mode = "online"
 seed = 4
-#nodes = ["kepler2","leto20","leto17","leto07","leto34"]
+#nodes = ["kepler2","kepler2"]
 #node_dict = dict(zip(encoders,nodes))
 for test_env in test_envs:
-    for test_level in test_levels:
+    for i,test_level in enumerate(test_levels):
         for lr in lrs:
             for label in labels:
                 for enc in encoders:
@@ -29,9 +35,10 @@ for test_env in test_envs:
                         script = "./submit_scripts/run_xfcpu.sl"
                     else:
                         script = "./submit_scripts/run_cpu.sl"
-                    args = ["sbatch",
-                            "-w %s"%("leto16"),
-                            script,
+                    args = [#"sbatch",
+                            #"-w %s"%("leto30"),
+                            #script,
+                            "python",
                             "%s"%(main_file),
                             "--embedder_name %s"%enc,
                             "--embed_env %s"%embed_env,
@@ -46,7 +53,7 @@ for test_env in test_envs:
                             "--comet_mode %s"%(comet_mode),
                             "--test_size %i" % 5000,
                             "--batch_size %i"%64,
-                            "--seed %i"%(seed)]
+                            "--seed %i"%(seed), "&>", "./batch_outputs/sonic_rand_shell%i.out"%i]
                     print(" ".join(args))
-                    subprocess.run(args)
+                    #subprocess.run(args)
         
