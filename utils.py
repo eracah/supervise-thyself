@@ -66,7 +66,7 @@ def setup_args():
     
     #mode params
     parser.add_argument('--mode', choices=["train","test"],default="train")
-    parser.add_argument("--task", choices=["embed","infer","predict","control"], default="embed")
+    parser.add_argument("--task", choices=["embed","infer","predict","control", "viz"], default="embed")
     
     
     #embed params
@@ -113,6 +113,8 @@ def setup_args():
     parser.add_argument("--val_rollouts",type=str,default=5)
     parser.add_argument("--eval_best_freq",type=int,default=5)
     
+    
+    parser.add_argument("--viz_num_frames", type=int, default=20)
     #unused?
     parser.add_argument("--stride",type=int,default=1)
     parser.add_argument("--hidden_width",type=int,default=32)
@@ -124,12 +126,12 @@ def setup_args():
     if args.test_notebook:
         args.workers=1
         args.batch_size = 8  
-        args.tr_size = 5000
+        args.tr_size = 500
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="train"
-        args.task="infer"
+        args.mode="test"
+        args.task="predict"
         args.embedder_name = "tdc"
         args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0" #"SonicTheHedgehog-Genesis"
         args.embed_level=args.transfer_level=args.test_level= None #'GreenHillZone.Act1'
@@ -185,6 +187,8 @@ def setup_args():
     if args.task == "predict":
         args.frames_per_example = args.pred_num_params
         args.there_are_actions = True
+    if args.task == "viz":
+        args.frames_per_example = args.viz_num_frames
         
     if args.task == "embed":
         if args.embedder_name in ['vae','rand_cnn']:
