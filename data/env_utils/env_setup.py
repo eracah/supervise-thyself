@@ -43,7 +43,6 @@ def setup_env(args):
             from ple import gym_ple
         import gym
         env = gym.make(args.env_name)
-    args.num_actions = env.action_space.n
     
     env.seed(args.seed) 
     env.num_buckets = args.buckets

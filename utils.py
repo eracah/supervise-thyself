@@ -30,14 +30,19 @@ def setup_exp(args):
     
     experiment = Experiment(**exp_kwargs)
     experiment.set_name(exp_name)
-    experiment.log_parameters (args.__dict__)
-    return experiment, experiment.id
+    experiment.log_parameters(args.__dict__)
+    exp_id =  experiment.id
+    print(exp_id)
+    args.exp_id = exp_id
+    return experiment
 
 
 
 def setup_dir(args,exp_id,basename=".models"):
     dir_ = Path(basename) / get_child_dir(args,task=args.task,env_name=args.env_name,level=args.level) / Path(exp_id)
     dir_.mkdir(exist_ok=True,parents=True)
+    print("%s save_dir: %s"%(basename,str(model_dir)))
+    setattr(args,basename.strip(".")+"_dir",str(dir_))
     return dir_
 
 
@@ -65,7 +70,7 @@ def setup_args():
     
     
     #mode params
-    parser.add_argument('--mode', choices=["train","test"],default="train")
+    parser.add_argument('--mode', choices=["train","test", "viz"],default="train")
     parser.add_argument("--task", choices=["embed","infer","predict","control", "viz"], default="embed")
     
     
@@ -114,7 +119,9 @@ def setup_args():
     parser.add_argument("--eval_best_freq",type=int,default=5)
     
     
-    parser.add_argument("--viz_num_frames", type=int, default=20)
+    parser.add_argument("--viz_num_frames", type=int, default=30)
+    parser.add_argument("--viz_fmap_index",type=int, default=212)
+
     #unused?
     parser.add_argument("--stride",type=int,default=1)
     parser.add_argument("--hidden_width",type=int,default=32)
@@ -130,16 +137,16 @@ def setup_args():
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="test"
-        args.task="predict"
-        args.embedder_name = "tdc"
+        args.mode="viz"
+        args.task="viz"
+        args.embedder_name = "vae"
         args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0" #"SonicTheHedgehog-Genesis"
-        args.embed_level=args.transfer_level=args.test_level= None #'GreenHillZone.Act1'
+        args.embed_level=args.transfer_level=args.test_level= "None" #'GreenHillZone.Act1'
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_level="CarnivalNightZone.Act1"
 #         args.embed_level = "AngelIslandZone.Act1"
-        args.label_name="pipe_x_coord"
+        args.label_name="y_coord"
         args.comet_mode = "online"
 
     
@@ -156,6 +163,9 @@ def setup_args():
             print("no testing  for embed!")
         else:
             args.regime = "test"
+    
+    if args.mode == "viz":
+        args.regime = "transfer"
             
             
     args.env_name = getattr(args, args.regime + "_env")
@@ -187,8 +197,7 @@ def setup_args():
     if args.task == "predict":
         args.frames_per_example = args.pred_num_params
         args.there_are_actions = True
-    if args.task == "viz":
-        args.frames_per_example = args.viz_num_frames
+ 
         
     if args.task == "embed":
         if args.embedder_name in ['vae','rand_cnn']:
@@ -198,7 +207,8 @@ def setup_args():
             args.there_are_actions = True
         elif args.embedder_name in ["snl", "tdc"]:
             args.frames_per_example = args.seq_tasks_num_frames
-    
+    if args.mode == "viz":
+        args.frames_per_example = args.viz_num_frames
     print("num_frames_per_example",args.frames_per_example)
     if args.small_scale:
         args.batch_size = 8  
@@ -206,7 +216,7 @@ def setup_args():
         args.test_size= 32
         args.val_size = 32
         
-    
+    print(args.mode,args.task)
     return args
 
 
@@ -225,8 +235,7 @@ def convert_to1hot(a,n_actions):
     return a_1hot
 
 def get_env_nickname(env_name,level, resize_to):
-    level = "" if level is None else "_" + level
-    return str(resize_to[0]) + env_name.split("-")[0] + level
+    return str(resize_to[0]) + env_name.split("-")[0] + "_" + str(level)
 
 def get_hyp_str(args):
     hyp_str = ("lr%f"%args.lr).rstrip('0').rstrip('.')
