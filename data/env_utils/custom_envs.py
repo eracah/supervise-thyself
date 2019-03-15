@@ -1,73 +1,89 @@
-
-# coding: utf-8
-
-# In[2]:
-
-
-from gym_minigrid.envs import EmptyEnv
-
-
-# In[3]:
-
-
-from gym_minigrid.register import register
-
-
-# In[4]:
-
-
-class EmptyEnv32x32(EmptyEnv):
-    def __init__(self):
-        super().__init__(size=32)
-
-register(
-    id='MiniGrid-Empty-32x32-v0',
-    entry_point='data.env_utils.custom_envs:EmptyEnv32x32'
-)
-
-
-# In[5]:
-
-
-class EmptyEnv64x64(EmptyEnv):
-    def __init__(self):
-        super().__init__(size=64)
-
-register(
-    id='MiniGrid-Empty-64x64-v0',
-    entry_point='data.env_utils.custom_envs:EmptyEnv64x64'
-)
-
-
-# In[6]:
-
-
-class EmptyEnv100x100(EmptyEnv):
-    def __init__(self):
-        super().__init__(size=100)
-
-register(
-    id='MiniGrid-Empty-100x100-v0',
-    entry_point='data.env_utils.custom_envs:EmptyEnv100x100'
-)
-
-class EmptyEnv128x128(EmptyEnv):
-    def __init__(self):
-        super().__init__(size=128)
-
-register(
-    id='MiniGrid-Empty-128x128-v0',
-    entry_point='data.env_utils.custom_envs:EmptyEnv128x128'
-)
-
-
 from gym.envs.registration import register
 import gym
 from gym import spaces
 from ple import PLE
 import numpy as np
 import os
+class InfoWrapper(gym.Wrapper):
+    def step(self, action):
+        observation, reward, done, info = self.env.step(action)
+        return observation, reward, done, self.info()
 
+    def reset(self, **kwargs):
+        observation = self.env.reset(**kwargs)
+        info = self.info()
+        return observation, info
+
+    def info(self):
+        raise NotImplementedError
+    
+
+class AtariWrapper(InfoWrapper):
+    atari_ram_dict = {"Pitfall-v0":(97,105),
+                  "PrivateEye-v0": (63,86)}
+    
+    def __init__(self, env):
+        super().__init__(env)
+        self.xind, self.yind = AtariWrapper.atari_ram_dict[self.env.spec.id]
+        
+        
+        
+    def info(self):
+
+        ram = self.env.env.ale.getRAM()
+        x,y = ram[self.xind], ram[self.yind]
+        return dict(x=x,y=y)     
+
+class LunarLanderWrapper(InfoWrapper):
+    def info(self):
+        x,y = self.env.env.lander.position
+        return dict(x=x,y=y)
+        
+
+# I got this from https://github.com/openai/retro-baselines/blob/master/agents/sonic_util.py
+class SonicDiscretizer(gym.ActionWrapper):
+    """
+    Wrap a gym-retro environment and make it use discrete
+    actions for the Sonic game.
+    """
+    def __init__(self, env):
+        super(SonicDiscretizer, self).__init__(env)
+        buttons = ["B", "A", "MODE", "START", "UP", "DOWN", "LEFT", "RIGHT", "C", "Y", "X", "Z"]
+        actions = [['DOWN', 'B'], ["RIGHT"]]
+        #[['LEFT'], ['RIGHT'], ['LEFT', 'DOWN'], ['RIGHT', 'DOWN'], ['DOWN'],['DOWN', 'B'], ['B']]
+        self._actions = []
+        for action in actions:
+            arr = np.array([False] * 12)
+            for button in action:
+                arr[buttons.index(button)] = True
+            self._actions.append(arr)
+        self.action_space = gym.spaces.Discrete(len(self._actions))
+
+    def action(self, a): # pylint: disable=W0221
+        return self._actions[a].copy()
+    
+    def sonicify_action(self,a):
+        return self.action(a)
+    
+
+
+class FlappyBirdWrapper(InfoWrapper):
+    y_coord = env.env.game_state.game.player.pos_y
+    y_coord = bucket_coord(y_coord,env.num_buckets,env.env.game_state.game.height)
+    max_pipe_dist = 305
+    x_pipes = [env.env.game_state.game.pipe_group.sprites()[i].x for i in range(3)]
+    min_x = min(x_pipes)
+    ind_x = x_pipes.index(min_x)
+    if min_x < 0:
+        ind_x = (ind_x + 1) % 3
+    assert ind_x < 3, "whoa whoa %i, %i, %i" %(x_pipes[0],x_pipes[1], x_pipes[2])
+    x_pipe = x_pipes[ind_x]
+    if x_pipe > max_pipe_dist:
+        x_pipe = 0
+
+        
+    pipe_x_coord = bucket_coord(x_pipe, env.num_buckets,max_pipe_dist)
+    latent_dict = dict(y_coord=y_coord, pipe_x_coord=pipe_x_coord)
 class PLEEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
@@ -154,10 +170,3 @@ for game in ['originalGame','nosemantics','noobject','nosimilarity','noaffordanc
         tags={'wrapper_config.TimeLimit.max_episode_steps': 100000},
         nondeterministic=nondeterministic,
     )        
-# class originalgame(PLEEnv)        
-# for env_name in ["originalGame","nosemantics","nosimilarity","noaffordance","noobject"]:
-    
-    # register(
-    #     id=env_name.capitalize() + "-v0",
-    #     entry_point='ple.games:' + env_name
-    #     )

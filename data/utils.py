@@ -8,7 +8,7 @@ import math
 import numpy as np
 from collections import namedtuple
 import copy
-
+from collections import defaultdict
 def convert_frame(obs, resize_to=(-1,-1),to_tensor=False,device="cpu"):
     pil_image = Image.fromarray(obs, 'RGB')
     
@@ -31,42 +31,46 @@ def convert_frames(frames,resize_to=(-1,-1),to_tensor=False,device="cpu"):
     return torch.stack([convert(frame) for frame in frames])
 
 
-  
-def make_empty_transition( args):
-        Transition = get_transition_constructor(args)
-        trans_list = [[] if k is not "state_param_dict" else {} for k in Transition._fields]
-        trans = Transition(*trans_list)
-        return trans
-
-def get_transition_constructor(args):
-        tuple_fields = ['xs']
+class appendabledict(defaultdict):
+    def __init__(self,type_,*args,**kwargs):
+        self.type_ =  type_
+        super().__init__(type_,*args,**kwargs)
         
+    def subslice(self,slice_):
+        """indexes every value in the dict according to a specified slice
 
-        if args.there_are_actions:
-            tuple_fields.append("actions")
-            
-        if args.there_are_rewards:
-            tuple_fields.append("rewards")
-            
-        
-        # add this last
-        if args.needs_labels:
-            tuple_fields.append("state_param_dict")
-        
-        Transition = namedtuple("Transition",tuple(tuple_fields))
-        return Transition
-               
+        Parameters
+        ----------
+        slice : int or slice type
+            An indexing slice , e.g., ``slice(2, 20, 2)`` or ``2``.
 
-def append_to_trans(trans,**kwargs):
-        for k,v in kwargs.items():
-            if k in trans._fields:
-                trans._asdict()[k].append(copy.deepcopy(v))
+
+        Returns
+        -------
+        sliced_dict : dict (not appendabledict type!)
+            A dictionary with each value from this object's dictionary, but the value is sliced according to slice_
+            e.g. if this dictionary has {a:[1,2,3,4], b:[5,6,7,8]}, then self.subslice(2) returns {a:3,b:7}
+                 self.subslice(slice(1,3)) returns {a:[2,3], b:[6,7]}
+
+         """
+        sliced_dict = {}
+        for k,v in self.items():
+            sliced_dict[k] = v[slice_]
+        return sliced_dict
     
+    def append_update(self,other_dict):
+        """appends current dict's values with values from other_dict
 
-def append_to_trans_param_dict(trans, param_dict):
-        if "state_param_dict" in trans._fields:
-            for k,v in param_dict.items():
-                if k not in trans.state_param_dict:
-                    trans.state_param_dict[k] = [copy.deepcopy(v)]
-                else:
-                    trans.state_param_dict[k].append(copy.deepcopy(v))
+        Parameters
+        ----------
+        other_dict : dict
+            A dictionary that you want to append to this dictionary
+
+
+        Returns
+        -------
+        Nothing. The side effect is this dict's values change
+
+         """
+        for k,v in other_dict.items():
+            self.__getitem__(k).append(v)

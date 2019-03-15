@@ -50,23 +50,3 @@ class ShuffleNLearn(nn.Module):
         return loss, acc
 
 
-if __name__ == "__main__":
-    from torchvision.utils import make_grid
-    from matplotlib import pyplot as plt
-    snl = ShuffleNLearn()
-    tr, val = bufs
-    batch_size = 32
-
-    trans = tr.sample(batch_size)
-
-    for i,tims in enumerate(shuffled_batch):
-        t = make_grid(tims,3,normalize=True, pad_value=0.2).detach().cpu().numpy()
-        im = t.transpose(1,2,0)
-
-        title = ["bcd","bad", "bed"][inds[i]]
-
-        plt.figure(i)
-
-        plt.title(title)
-
-        plt.imshow(im)

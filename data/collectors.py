@@ -5,6 +5,7 @@ from data.utils import convert_frame
 from functools import partial
 from data.env_utils.env_setup import setup_env
 from data.utils import make_empty_transition, append_to_trans, append_to_trans_param_dict
+from collections import defaultdict
 
 class EpisodeCollector(object):
     def __init__(self, args, policy=None):            
@@ -46,6 +47,10 @@ class EpisodeCollector(object):
             append_to_trans_param_dict(trans, param_dict)
         append_to_trans(trans,xs=x)
         return trans
+    
+    
+    
+
     
     
     
