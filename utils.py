@@ -93,11 +93,11 @@ def setup_args():
     parser.add_argument("--tr_size",type=int,default=10000)
     parser.add_argument("--val_size",type=int,default=1000)
     parser.add_argument("--test_size",type=int,default=1000)
-    parser.add_argument("--there_are_actions",type=bool,default=False)
-    parser.add_argument("--there_are_rewards",type=bool,default=False)
+    parser.add_argument("--episode_max_frames", type=int, default=500)
+    
     
     #general params
-    parser.add_argument("--workers",type=int,default=4)
+    parser.add_argument("--num_workers",type=int,default=4)
     parser.add_argument("--no_actions",action="store_true")
     parser.add_argument("--comet_mode",type=str, choices=["online", "offline"],default="online")
     
@@ -137,10 +137,10 @@ def setup_args():
         args.test_size= 64
         args.val_size = 48
         args.resize_to = (128,128)
-        args.mode="viz"
-        args.task="viz"
+        args.mode="train"
+        args.task="embed"
         args.embedder_name = "vae"
-        args.embed_env=args.transfer_env=args.test_env="FlappyBirdDay-v0" #"SonicTheHedgehog-Genesis"
+        args.embed_env=args.transfer_env=args.test_env="Pitfall-v0" #"SonicTheHedgehog-Genesis"
         args.embed_level=args.transfer_level=args.test_level= "None" #'GreenHillZone.Act1'
 #         args.embed_env="SonicAndKnuckles3-Genesis"
 #         args.transfer_env="SonicAndKnuckles3-Genesis"

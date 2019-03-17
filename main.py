@@ -1,7 +1,7 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[3]:
 
 
 from comet_ml import Experiment # comet must come before any torch modules. I don't know why?
@@ -19,19 +19,15 @@ from torch.optim import Adam, RMSprop
 import numpy as np
 from pathlib import Path
 import time
-from data.splitter import setup_tr_val_test
+from data.setup import setup_data
 import os
-from utils import get_child_dir, get_hyp_str, setup_args, setup_dir, setup_exp
-
-
-# In[2]:
-
+from utils import setup_args, setup_dir, setup_exp
 
 if __name__ == "__main__":
     args = setup_args()
+    data = setup_data(args)
     experiment = setup_exp(args)
     model = setup_model(args)
-    data = setup_tr_val_test(args)
 
  
 
