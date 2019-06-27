@@ -1,4 +1,4 @@
-# self-supervised-survey
-look at Inverse Model, VAE, hopefully others, etc.
+# supervise-thyself
+Code for the ICML Self-Supevised Workshop paper: `Supervise Thyself: Examining Self-Supervised Representations in Interactive Environments`
 
 
