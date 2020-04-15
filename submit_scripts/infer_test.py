@@ -35,10 +35,16 @@ for test_env in test_envs:
                         script = "./submit_scripts/run_xfcpu.sl"
                     else:
                         script = "./submit_scripts/run_cpu.sl"
+<<<<<<< HEAD
                     args = [#"sbatch",
                             #"-w %s"%("leto30"),
                             #script,
                             "python",
+=======
+                    args = ["sbatch",
+                            "-w %s"%("kepler2"),
+                            script,
+>>>>>>> parent of 0e2938f... fixed bug with pipes in flappybird
                             "%s"%(main_file),
                             "--embedder_name %s"%enc,
                             "--embed_env %s"%embed_env,
