@@ -22,7 +22,7 @@ def setup_exp(args):
                             workspace="eracah")
     if args.comet_mode == "online":
         from comet_ml import Experiment
-        exp_kwargs.update(api_key="kH9YI2iv3Ks9Hva5tyPW9FAbx")
+        exp_kwargs.update(api_key=args.api_key)
     elif args.comet_mode == "offline":
         from comet_ml.offline import OfflineExperiment as Experiment
         offline_directory = Path(".logs")
@@ -54,7 +54,7 @@ def setup_args():
         sys.argv = [""]
     
     parser = argparse.ArgumentParser()
-    
+    parser.add_argument("--api_key", type=str)
     
     parser.add_argument("--small_scale", action="store_true")
     
